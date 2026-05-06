@@ -1,0 +1,1828 @@
+<?php
+session_start();
+require_once('backend/includes/constant.php');
+require_once('backend/includes/autoload.php');
+
+$mysqli = new MySqliDriver();
+$tab  = $_POST['tab'];
+$log = array();
+function check_user_session()
+{
+    if($_SESSION['login_id']=='' || empty($_SESSION['login_id']))
+    {
+        return false;    
+    }
+    return true;
+}
+
+if(empty($_SERVER['HTTP_X_REQUESTED_WITH']) && strtolower($_SERVER['HTTP_X_REQUESTED_WITH']) != 'xmlhttprequest')
+{
+    echo "<script language='javascript' type='text/javascript'>";
+    echo "alert('Request not identified as ajax request');";
+    echo "</script>";
+    $URL="index.php";
+    echo "<script>location.href='$URL'</script>";
+}
+
+
+if ($_SERVER['REQUEST_METHOD'] != 'POST') {
+    echo "<script language='javascript' type='text/javascript'>";
+    echo "alert('Bad Request method');";
+    echo "</script>";
+    $URL="index.php";
+    echo "<script>location.href='$URL'</script>";
+}
+
+
+if(isset($tab) && $tab != "" && $tab == 'ddl_advance_search')
+{
+    /*
+	if(isset($_POST['type']))
+	{
+		$sql = "SELECT DISTINCT ".$_POST['type']." as Field FROM tbl_sep_data";
+	}
+	else
+	{
+		$sql = "SHOW COLUMNS FROM tbl_sep_data";
+	}
+    	
+	$result = $mysqli->executeQry($sql);
+	$arr_skip = array("id","questel_id","patent_link","family_size", "citing_patents_fw", "count_of_citations", "citation_bw", "add_by", "active", "recTimeStamp");
+	if ($mysqli->num_rows($result) > 0) 
+	{
+		$data = "";
+		while($row = $mysqli->fetch_assoc($result))
+		{
+	    	if(in_array($row['Field'], $arr_skip))
+	    	{
+	    		continue;
+	    	}
+	    	if($row['Field']=='sso'){
+	    	    $data .= "<option value = '".$row['Field']."' >SSO</option>";
+	    	}else{
+	    	    $data .= "<option value = '".$row['Field']."' >".ucwords(str_replace("_"," ",$row['Field']))."</option>";    
+	    	}
+		}
+        
+        	$response['msg_code'] = "00";
+		$response['msg'] = "Success";
+		$response['data'] = $data;
+	}
+	else
+	{
+		$response['msg_code'] = "02";
+		$response['msg'] = "No result found";
+	}
+        */
+        
+    if(isset($_POST['type']))
+    {
+        $file_data = file_get_contents(ROOT_DIR."backend/uploads/advance_search_option_data_results_".$_POST['type'].".text");
+    }
+    else
+    {
+        $file_data = file_get_contents(ROOT_DIR."backend/uploads/advance_search_option_data_results.text");
+    }
+        
+    if($file_data){   
+        $response['msg_code'] = "00";
+        $response['msg'] = "Success";
+        $response['data'] = $file_data;
+    }
+    else
+    {
+        $response['msg_code'] = "02";
+        $response['msg'] = "No result found";
+        
+    }
+	echo json_encode($response);
+        
+}
+else if($tab == 'submit_order')
+{ 
+		$type = 'ORDER_ID';	
+		$company_id = $_POST['company']; 
+		$currency = $_POST['currency']; 
+		$firstName = $_POST['firstName']; 
+		$lastName = $_POST['lastName']; 
+		$email = $_POST['email']; 
+		$address = $_POST['address']; 
+		$country = $_POST['country']; 
+		$state = $_POST['state']; 
+		$zip = $_POST['zip']; 
+		$AMOUNT_TOBE_PAY = $_POST['amount']; 
+		$p_value = $_POST['portfolio_value']; 
+		$order_id = $mysqli->generate_auto_id($type);
+		
+		 $sql = "INSERT INTO  ".ORDERS." SET   first_name = '".$firstName."', last_name  = '".$lastName."', email = '".$email."', 	address = '".$address."', country = '".$country."', state = '".$state."', zip = '".$zip."', payment_currency = '".$currency."',  order_id = '".$order_id."' ,  order_date = now(), payment_amount = '".$AMOUNT_TOBE_PAY."'";
+		$log['sql'] = $sql;
+		$res = $mysqli->executeQry($sql);
+		
+		if($res > 0)
+	{	$response['msg_code'] = "00";
+		$response['msg'] = "Order sending for review...";
+		$response['data'] = '<form onsubmit="return false;" id="frm_proceed_to_payment" method="post" >
+								<div class="card-body">
+									<div class="row">
+										<div class="col-md-12">
+											<div class="table-responsive">
+												<table class="table"> 
+												<tr><th>Name</th><td><center><b>:</b></center></td><td style="width:75%">'.$firstName.' '.$lastName.'</td></tr> 
+												<tr><th>Email</th><td><center><b>:</b></center></td><td>'.$email.'</td></tr>
+												<tr><th>Address</th><td><center><b>:</b></center></td><td style="width:75%">'.$address.'</td></tr> 
+												<tr><th>Order Id</th><td><center><b>:</b></center></td><td>'.$order_id.'</td></tr>';
+												
+												 $response['data'] .= '<tr><th>Amount</th><td><center><b>:</b></center></td><td>$'.$AMOUNT_TOBE_PAY.'</td></tr>
+												 <tr><th>Currency</th><td><center><b>:</b></center></td><td>'.$currency.'</td></tr>';
+												 $btn_pay = '<button  type="submit" id="search" name="search" class="btn btn-primary">Pay With Paypal</button>';
+												
+												$response['data'] .= '</table>
+											</div>
+										</div>
+									</div>
+								</div>	  
+								<input type="hidden" name="order_id" value="'.$order_id.'" />
+								<input type="hidden" name="company_id" value="'.$company_id.'" />
+								<input type="hidden" name="name" value="'.$firstName.' '.$lastName.'" />
+								<input type="hidden" name="email" value="'.$email.'" />
+								<input type="hidden" name="address" value="'.$address.'" />
+								<input type="hidden" name="state" value="'.$state.'" />
+								<input type="hidden" name="zip" value="'.$zip.'" />
+								<input type="hidden" name="portfolio_value" value="'.$p_value.'" />
+								<input type="hidden" name="amount" value="'.$AMOUNT_TOBE_PAY.'" />
+								<input type="hidden" name="tab" value="proceed_to_payment" />
+								<input type="hidden" name="cmd" value="_xclick" />
+								<input type="hidden" name="no_note" value="0" />
+								<input type="hidden" name="lc" value="US" />
+								<input type="hidden" name="bn" value="PP-BuyNowBF:btn_buynow_LG.gif:NonHostedGuest" />
+								<div style="background-color: #fff;" class="card-footer">
+									'.$btn_pay.'
+									<button  type="reset" onclick=\'modify_order();\' class="btn  btn-primary">Update Details</button>
+								</div>
+							</form>';
+	}	
+echo json_encode($response);	
+}
+
+else if($tab == 'proceed_to_payment')
+{
+	
+	$record_id = $_POST['order_id'];
+	$company_id = $_POST['company_id'];
+	$customer_name = $_POST['name'];
+	$customer_email = $_POST['email'];
+	$customer_address = $_POST['address'];
+	$customer_state = $_POST['state'];
+	$customer_zip = $_POST['zip'];
+	$portfolio_value = $_POST['portfolio_value'];
+	$amount = $_POST['amount'];
+	 $sql_data = "SELECT     payment_amount, payment_currency from tbl_orders WHERE order_id = '".$record_id."'"; 
+	$result_data = $mysqli->executeQry($sql_data);
+	$obj_data = $mysqli->fetch_object($result_data);
+	
+	$data = [];
+	foreach ($_POST as $key => $value) {
+		$data[$key] = stripslashes($value);
+		
+	}
+	$data['business'] = $paypalConfig['email'];
+	$data['return'] = stripslashes($paypalConfig['return_url']);
+	$data['cancel_return'] = stripslashes($paypalConfig['cancel_url']);
+	$data['notify_url'] = stripslashes($paypalConfig['notify_url']);	
+	$data['item_name'] = ucwords('Green100 data');
+	$data['item_number'] = $record_id ; 
+	$data['amount'] = $obj_data->payment_amount;
+	$data['currency_code'] = $obj_data->payment_currency;
+	//$data['payer_email'] = $obj_data->email;
+	//$data['on0'] = 'Soucre';	
+	$data['os0'] = 'Green100';	
+	$queryString = http_build_query($data);
+	
+	$response['msg_code'] = "00";
+	$response['msg'] = "Payment Processing... Please do not refresh the page...";	
+	$response['redirect'] = PAYPAL_ENDPOINT."?".$queryString; 
+	
+	$_SESSION['ORDER_ID'] = $record_id;
+	$_SESSION['COMPANY_ID'] = $company_id;
+	$_SESSION['NAME'] = $customer_name;
+	$_SESSION['EMAIL'] = $customer_email;
+	$_SESSION['ADDRESS'] = $customer_address;
+	$_SESSION['STATE'] = $customer_state;
+	$_SESSION['ZIP'] = $customer_zip;
+	$_SESSION['P_VALUE'] = $portfolio_value;
+	$_SESSION['AMOUNT'] = $amount;
+	//print_r($_SESSION['ORDER_ID']);exit;
+echo json_encode($response);
+}
+else if($tab == 'verify_payment')
+{		
+
+	$update = '';
+	$com_id = $_SESSION['COMPANY_ID'];
+	$c_id = explode(',',$_SESSION['COMPANY_ID']);
+	if(!isset($_SESSION['ORDER_ID']))
+	{
+		$response['msg_code'] = "01";
+		$response['msg'] = 'Invalid request';
+		$log[] = "Order Id not found in SESSION";
+	}
+	else
+	{
+		$verification_status = false;
+		$end_time = strtotime('+1 minutes',strtotime(date('Y-m-d h:i:s')));
+		$i = 0;
+		
+		while($end_time > strtotime(date('Y-m-d h:i:s')))
+		{   
+			$verification_status = $mysqli->verifyTransaction($_SESSION['ORDER_ID']); 
+			
+			  
+			$log['verification_status'] = $verification_status;
+			if($verification_status == 'VERIFIED' || $verification_status == 'INVALID')
+			{
+				if($verification_status == 'VERIFIED')
+				{ 
+					$htmls = '';	
+					$date = date('Y-m-d');
+					$update = "order_status='Completed', is_amount_paid = 'Y' ";
+					foreach($c_id as $id){
+						
+					 $sql = "INSERT INTO  ".ORDERS_DETAILS." SET   company_id = '".$id."', order_id  = '".$_SESSION['ORDER_ID']."'";
+					$log['sql'] = $sql;
+					$res = $mysqli->executeQry($sql);
+					}			
+
+
+            $sql = "SELECT * FROM ".DATA." where id IN ($com_id)";	
+			$result = $mysqli->executeQry($sql);
+			$total = 0;
+			
+			$sql1 = "SELECT txn_id,order_date FROM ".ORDERS." where order_id ='".$_SESSION['ORDER_ID']."'";	
+			$result1 = $mysqli->executeQry($sql1);
+			$obj_data = $mysqli->fetch_object($result1);
+			$htmls .= '<div class="row" >
+        
+		<div class="col-md-8  line" id="payment_card" style="order: 2;">
+            <h4 class="mb-3" style="color:#299487;" id="header_text">Order Details</h4>
+        
+								<div class="card-body">
+									<div class="row">
+										<div class="col-md-12">
+											<div class="table-responsive">
+												<table class="table"> 
+												<tbody><tr><th>Name</th><td><center><b>:</b></center></td><td style="width:75%">'.$_SESSION['NAME'].'</td></tr> 
+												<tr><th>Email</th><td><center><b>:</b></center></td><td>'.$_SESSION['EMAIL'].'</td></tr>
+												<tr><th>Address</th><td><center><b>:</b></center></td><td style="width:75%">'.$_SESSION['ADDRESS'].'</td></tr> 
+												<tr><th>Order Id</th><td><center><b>:</b></center></td><td>'.$_SESSION['ORDER_ID'].'</td></tr><tr><th> Total Portfolio <span Style="font-size: 13px;font-weight: 300;color: #53535399;"><br>(No. of patent families)</br></span></th><td><center><b>:</b></center></td><td>'.$_SESSION['P_VALUE'].'</td></tr><tr><th>Currency</th><td><center><b>:</b></center></td><td>USD</td></tr><tr><th>Order amount</th><td><center><b>:</b></center></td><td>$ '.$_SESSION['AMOUNT'].'</td></tr><tr><th>Transaction Id</th><td><center><b>:</b></center></td><td>'.$obj_data->txn_id.'</td></tr><tr><th>Order date time</th><td><center><b>:</b></center></td><td>'.$obj_data->order_date.'</td></tr>
+												 </tbody></table>
+											</div>
+										</div>
+									</div>
+								</div>	  
+							</div>
+    </div><div class="page_break"></div>';
+										 $htmls .=' <h4 class="mb-3" style="color:#299487;" id="header_text"> Ordered Portfolio Details</h4>
+													<table class="table table-bordered">
+														<thead>
+															<tr>
+																<th>#</th>
+																<th>Green Organization</th>
+																<th>Green Rank</th>
+																<th>Absolute Green Portfolio Size</th>
+																<th>Green Rank Within Country</th>
+																<th>Primary Industries</th>-->
+																<th>Green Rank Within Industry</th>
+																<th>HQ Country</th>
+																
+															</tr>
+														</thead>
+														<tbody>';
+														/*<th>Green Portfolio Impact Score</th>
+																<th>Total Industries impacted</th>
+																<th>Average geographical Spread</th>
+																<th>Percentage Quality Patents Green Portfolio</th>
+																<th>Green Portfolio Grant Ratio</th>*/
+														$i=0;
+														while($rows = $mysqli->fetch_assoc($result))
+														{	
+														$organization = $rows['green_organization'];
+														$country = $rows['hq_country'];
+														$greensize = $rows['absolute_green_portfolio_size'];
+														$total+= $greensize;
+														$i = $i + 1;
+														
+														$htmls .='<tr>
+																<td>'.$i.'</td>
+																<td>'.$rows['green_organization'].'</td>
+																<td>'.$rows['green_rank'].'</td>
+																<td>'.$rows['absolute_green_portfolio_size'].'</td>
+																<td>'.$rows['green_rank_within_country'].'</td>
+																<td>'.$rows['primary_industries'].'</td>
+																<td>'.$rows['green_rank_within_industry'].'</td>
+																
+																<td>'.$rows['hq_country'].'</td>
+															</tr>';
+															/*<td>'.$rows['green_portfolio_impact_score'].'</td>
+																<td>'.$rows['total_industries_impact'].'</td>
+																<td>'.$rows['average_geographical_spread'].'</td>
+																<td>'.$rows['percentage_quality_patents_green_portfolio'].'</td>
+																<td>'.$rows['green_portfolio_grant_ratio'].'</td>*/
+														}
+
+								
+														
+															
+								
+														$htmls .='</tbody>
+													</table>';
+						$file_name = 'Sagacious IP GREEN100_order'.$_SESSION['ORDER_ID'].".pdf";
+					
+						
+				   
+						$str = '<!DOCTYPE html>
+							<html lang="en">
+							<head>
+							<title>Order Summary</title>
+							<meta charset="utf-8">
+							<meta name="viewport" content="width=device-width, initial-scale=1">
+							<link href="css/bootstrap.min.css" rel="stylesheet" /> 
+							<style>
+							.table{
+								width:1200px !important;
+							}
+							.definition{
+								font-size: 11px important;
+							font-weight: 300 important;
+							color: #53535399 important;
+								
+							}
+							.align-middle{
+								background-color: #299487 !important;
+								font-weight: 400 !important;
+								line-height: 1.5,!important;
+								color:#fff !important;
+							}
+							.parameters{
+								font-weight: 900 !important;
+								color:#fff !important;
+							}
+							.page_break{
+								page-break-before:always;
+							}
+							</style>
+							</head>
+							<body>
+							<div class="row">
+
+							<div class="col-md-12">
+							<h1 class="text-center">GREEN100 Index Order Summary</h1><br></br>
+							'.$htmls.'
+							<div class="modal-footer">
+								 <div class="col-md-8">Visit <a href="www.sagaciousresearch.com/green100">www.sagaciousresearch.com/green100</a> for more details.</p><br><p>In case of queries please contact <a href="info@sagaciousresearch.com">info@sagaciousresearch.com</a></p><br><p style=" font-style: oblique;">Generated on - '.date("d/m/Y").' '.date("h:i").'</p></div>
+								
+								<div class="col-md-4"><div class="float-right"><img src="backend/img/logo_small.png"></div></div>
+							 </div>
+							</div>
+							</div>
+
+							</body>
+							</html>';			
+					
+					$mysqli->create_pdf($str,ABSOLUTE_ROOT_ORDER.$file_name,$dompdf);
+					
+					
+					
+					$body = '<table class="main" style="margin-top:10px !important; width: 100%; background: #e4dede; border-radius: 3px;"> 
+					<tr>
+						<td class="wrapper" style="font-family: sans-serif; font-size: 14px; vertical-align: top; box-sizing: border-box; padding: 20px;">
+						  <table border="0" cellpadding="10" cellspacing="0" style="border-collapse: separate; mso-table-lspace: 0pt; mso-table-rspace: 0pt; width: 100%; background-color:#fff;">
+							<tr>
+							  <td style="font-family: sans-serif; font-size: 16px; vertical-align: top;">
+								 
+								<p style="font-family: sans-serif; font-size: 16px; font-weight: normal; margin: 0; Margin-bottom: 10px;">Dear  '.$_SESSION['NAME'].' ,</p>
+								<p style="font-family: sans-serif; font-size: 16px; font-weight: normal; margin: 0; Margin-bottom: 5px;">Your Order has been confirmed. Please find the attached file.</p>
+								<table>
+								<tr><td><b>Thank you and best regards,</td></tr>
+								<tr><td><span style="color:#6c757d;">Sagacious Research Pvt. Ltd. | Tel: +91 124 403 343</span>
+								</br>
+								<img width="30%" style="width:30% !important;" src="https://sagaciousresearch.com/wp-content/themes/sagacious/images/sagacious-ip-logo.png" />
+								</br><span ><a href="https://www.sagaciousiptech.com">www.sagaciousiptech.com </a>|<a href="https://sagaciousresearch.com"> www.sagaciousresearch.com</a>
+								</br><span ><span style="color:blue; font-size:10px;">300+ Techno-Legal professionals | 17,500+ projects delivered worldwide in 16 + languages | 1,200+ Clients from 50+ Countries</span>
+								</br><span style="color:#ccc;"><span style="color:green; font-size:10px;"><u><b>Sagacious Research Goes Green:</b></u> Please consider the environment before printing this e-mail.</span></td></tr>
+							</table>
+								 
+								
+							  </td>
+						</tr>
+					</table>
+				</td>
+			</tr>
+		</table>';
+						
+					$subject = "Order Details For '".$_SESSION['ORDER_ID']."'";
+					$tomail = $_SESSION['EMAIL'];
+					$attachmentPath = ABSOLUTE_ROOT_ORDER.$file_name;
+					$log['Email_sent'] = $mysqli->sendEmailNotifocation($subject, $body, $attachmentPath, USER_EMAIL, APP_FULL_NAME , $tomail, '', BCC_EMAIL);
+					
+					
+					$log['Email_sent'] = $mysqli->sendEmailNotifocation($subject, $body,$attachmentPath, USER_EMAIL, APP_FULL_NAME , CONTACT_EMAIL, '', BCC_EMAIL_1);
+					
+					$log['Email_subject'] = $subject;
+					$log['Email_body'] = $body;
+					$response['msg_code'] = "00";
+					
+				}
+				else if($verification_status == 'INVALID')
+				{
+					$update = "order_status='Payment_Failed'";
+					$response['msg_code'] = "09";
+				}				
+				$response['msg'] = $verification_status;
+				$response['status'] = "SUCCESS";
+				break;
+			}
+			
+			
+			$i++;
+		}
+		if($verification_status === false)
+		{
+			$update = "order_status='Payment_Confirmation_Awaited'";
+			$response['msg_code'] = "01";
+			$response['status'] = "FAIL";
+			$response['msg'] = "We are waiting for payment confirmation from gateway, your order will get completed once payment  will be confirmed.";
+		}
+		
+		$sql = "UPDATE tbl_orders SET ".$update."  WHERE order_id = '".$_SESSION['ORDER_ID']."' LIMIT 1";
+		$result = $mysqli->executeQry($sql);
+		$log['sql_update'] = $sql;
+		$log['sql_update_result'] = $result;
+			
+			$record_id = $_SESSION['ORDER_ID'];
+		unset($_SESSION['ORDER_ID']);
+		unset($_SESSION['COMPANY_ID']);
+		unset($_SESSION['EMAIL']);
+		unset($_SESSION['STATE']);
+		unset($_SESSION['ZIP']);
+		unset($_SESSION['ADDRESS']);
+		unset($_SESSION['P_VALUE']);
+		unset($_SESSION['AMOUNT']);
+		unset($_SESSION['selected_key']);
+	}
+	echo json_encode($response);
+}
+else if(isset($tab) && $tab != "" && $tab == 'buy_now')
+{
+	
+	$id = $_POST['id'];
+	$sesion_key = $_POST['sesion_key'];
+	//$_SESSION[$sesion_key][] = $id;
+	//
+	//$all_ids = $_SESSION[$sesion_key];
+	if(!isset($_SESSION['selected_key'])){
+		$_SESSION['selected_key'] = '';
+	}
+	
+	$session_key_array = explode(',',$_SESSION['selected_key']);
+		print_r($session_key_array);exit;
+	
+	
+	if($_POST['action'] == 'remove'){
+		foreach($session_key_array as $key=>$val){
+			if($val==$id){
+				unset($session_key_array[$key]);
+			}
+		}
+	}else{
+		//$session_key_array = $_SESSION['selected_key'];
+		//echo 'hi';
+		//$session_key_array[] = $id;
+		$session_key_array[] = $_POST['id'];
+	}
+	//print_r($session_key_array);exit;
+
+	$session_key_array2 = array_filter($session_key_array);
+	$all_ids = implode(',',$session_key_array2);
+	$_SESSION['selected_key'] = $all_ids;
+	 $sql = "SELECT * FROM ".DATA." where id IN ($all_ids)";
+			$result = $mysqli->executeQry($sql);
+			$total = 0;
+			while($rows = $mysqli->fetch_assoc($result))
+								{	
+									$greensize = $rows['absolute_green_portfolio_size'];
+									 $total+= $greensize;
+								}
+					echo $total;				
+}
+
+else if(isset($tab) && $tab != "" && $tab == 'buy_now2')
+{
+	
+	$all_ids = $_SESSION['selected_key'];
+	 $sql = "SELECT * FROM ".DATA." where id IN ($all_ids)";
+			$result = $mysqli->executeQry($sql);
+			$total = 0;
+			while($rows = $mysqli->fetch_assoc($result))
+								{	
+									$greensize = $rows['absolute_green_portfolio_size'];
+									 $total+= $greensize;
+								}
+					echo $total;				
+}
+else if(isset($tab) && $tab != "" && $tab == 'compare_results')
+{
+	
+		$htmls ='';
+		$htmls1 ='';
+		$file_name = '';
+		$sql1 = "SELECT id, green_organization FROM ".DATA." where 1";
+			$result1 = $mysqli->executeQry($sql1);
+			$i=0;
+			$rowsData1 = array();
+
+		
+			
+			$i =0;
+			$rowsData = array();
+				$Id = $_POST['Ids'];
+			$sql = "SELECT * FROM ".DATA." where id IN ($Id)";
+			$result = $mysqli->executeQry($sql);
+			while($rows = $mysqli->fetch_assoc($result))
+								{	
+									//$u_id = "data-id=".$rows['id'].";
+									$rowsData[$i] = $rows;
+									$i++;
+										
+								}
+					
+									
+									$htmls .= ' <div class="comparison-table" id="comparison_results"> <table class="table table-bordered">
+            <thead class="bg-secondary">
+                <tr>
+                    <td class="align-middle parameters">
+                      Parameters
+                    </td>';
+                     
+						for($k=0;$k<$i;$k++){
+                       $htmls .= ' <td data-id="'.$rowsData[$k]['id'].'" class="td_font align-middle"><div class="comparison-item"><span class="remove-item"><a onclick="removeRecords(\''.$rowsData[$k]['id'].'\') "><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather feather-x"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg></a></span>
+                           '.$rowsData[$k]['green_organization'].'
+                        </div>
+                    </td>';
+						}
+                   
+                $htmls .= '</tr>
+            </thead>
+            <tbody id="summary" data-filter="target">
+                <tr>
+                    <th >Green Rank</th>';
+				
+					for($k=0;$k<$i;$k++){
+						$htmls .= '<td><span class="text-dark font-weight-semibold"> '.$rowsData[$k]['green_rank'].'</span></td>';
+					}
+                $htmls .= '</tr>
+                <tr>
+                    <th>Primary Industry</th>';
+                   for($k=0;$k<$i;$k++){
+						$htmls .= '<td><span class="text-dark font-weight-semibold"> '.$rowsData[$k]['primary_industries'].'</span></td>';
+					}
+                $htmls .= '</tr>
+				<tr>
+                    <th>Green Rank Within Industry</th>';
+                     for($k=0;$k<$i;$k++){
+						$htmls .= '<td><span class="text-dark font-weight-semibold"> '.$rowsData[$k]['green_rank_within_industry'].'</span></td>';
+					}
+                $htmls .='</tr>
+				<tr>
+                    <th>Headquarter Country</th>';
+                    for($k=0;$k<$i;$k++){
+						$htmls .= '<td><span class="text-dark font-weight-semibold"> '.$rowsData[$k]['hq_country'].'</span></td>';
+					}
+                $htmls .='</tr>
+				<tr>
+                    <th>Green Rank Within Country</th>';
+                    for($k=0;$k<$i;$k++){
+						$htmls .= '<td><span class="text-dark font-weight-semibold"> '.$rowsData[$k]['green_rank_within_country'].'</span></td>';
+					}
+               $htmls .='</tr>
+				<tr>
+                    <th>Green Portfolio Impact Score<br><span class="definition">Defines the score obtained (out of 100).</span></th>';
+                    for($k=0;$k<$i;$k++){
+						$htmls .= '<td><span class="text-dark font-weight-semibold"> '.$rowsData[$k]['green_portfolio_impact_score'].'</span></td>';
+					}
+                $htmls .='</tr>
+				<tr>
+                    <th>Absolute Green Portfolio Size<br><span class="definition">Defines the total number of patent families (owned by the organization) having at least one member published in the last 5 years pertaining to Green technologies.<span></th>';
+                    for($k=0;$k<$i;$k++){
+						$htmls .= '<td><span class="text-dark font-weight-semibold"> '.$rowsData[$k]['absolute_green_portfolio_size'].'</span></td>';
+					}
+               $htmls .='</tr>
+				<tr>
+                    <th>Average Geographical Spread<br><span class="definition">Defines the average number of countries where a patent family in the Green Patent Portfolio is published.</span></th>';
+                    for($k=0;$k<$i;$k++){
+						$htmls .= '<td><span class="text-dark font-weight-semibold"> '.$rowsData[$k]['average_geographical_spread'].'</span></td>';
+					}
+                $htmls .='</tr>
+				<tr>
+                    <th>Green Portfolio Grant Ratio<br><span class="definition">Defines the percentage of the total patents granted to the organization against the total number of patent applications filled in their Green patent Portfolio.</span></th>';
+                    for($k=0;$k<$i;$k++){
+						$htmls .= '<td><span class="text-dark font-weight-semibold"> '.$rowsData[$k]['green_portfolio_grant_ratio'].'</span></td>';
+					}
+                $htmls .='</tr>
+				<tr>
+                    <th>Percentage of Quality Patents in Green Portfolio<br><span class="definition">Defines the percentage of quality patents (patent in Quadrant 1 and Quadrant 2) in the Green Patent Portfolio of the Organization.</span></th>';
+                    for($k=0;$k<$i;$k++){
+						$htmls .= '<td><span class="text-dark font-weight-semibold"> '.$rowsData[$k]['percentage_quality_patents_green_portfolio'].'</span></td>';
+					}
+                $htmls .='</tr>
+				<tr>
+                    <th>Total Industries Impact<br><span class="definition">Defines unique number of industries (as judged by IPC/CPC classes) tagged in Green Patent Portfolio of the organization as well as unique number of industries tagged in patent citing organization"s patents in its Green Patent Portfolio.</span></th>';
+                    for($k=0;$k<$i;$k++){
+						$htmls .= '<td><span class="text-dark font-weight-semibold"> '.$rowsData[$k]['total_industries_impact'].'</span></td>';
+					}
+              $htmls .=' </tr>
+               
+            </tbody>
+           
+        </table></div>';
+									
+								
+					$file_name = 'Sagacious IP GREEN100_compare_results'.date("Ymd").rand().".pdf";
+					
+						
+				   echo $htmls."|".$file_name;
+				$str = '<!DOCTYPE html>
+<html lang="en">
+<head>
+<title>Bootstrap Example</title>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link href="css/bootstrap.min.css" rel="stylesheet" /> 
+<style>
+.table{
+	width:1200px !important;
+}
+.definition{
+	font-size: 11px important;
+font-weight: 300 important;
+color: #53535399 important;
+	
+}
+.align-middle{
+	background-color: #299487 !important;
+	font-weight: 400 !important;
+	line-height: 1.5,!important;
+	color:#fff !important;
+}
+.parameters{
+	font-weight: 900 !important;
+	color:#fff !important;
+}
+</style>
+</head>
+<body>
+<div class="row">
+
+<div class="col-md-12">
+<h1 class="text-center">Sagacious IP GREEN100 Index – Comparison Results</h1>
+'.$htmls.'
+ <div class="modal-footer">
+		 <div class="col-md-8"> <p>This comparison is generated as per the GREEN100 ranking from Sagacious IP.<br>Visit <a href="www.sagaciousresearch.com/green100">www.sagaciousresearch.com/green100</a> for more details.</p><br><p style="margin-top:-10px;">Quality Scored Patent Datasets are available for purchase – please check <a href="www.sagaciousresearch.com/green100">www.sagaciousresearch.com/green100 </a></p><br><p style=" font-style: oblique;">Report Generated on - '.date("d/m/Y").' '.date("h:i").'</p></div>
+       	
+		<div class="col-md-4"><div class="float-right"><img src="backend/img/logo_small.png"></div></div>
+      </div>
+</div>
+</div>
+
+</body>
+</html>';			
+					
+					$mysqli->create_pdf($str,ABSOLUTE_ROOT.$file_name,$dompdf);
+	
+	
+	//echo json_encode($response);	
+
+}
+else if(isset($tab) && $tab != "" && $tab == 'share_compare_results')
+{
+	
+	extract($_POST);
+	$log = array();
+	 $sql = "INSERT INTO ".LOG." SET email = '".$results_email."', pathname = '".$path_name."'"; 
+		$res = $mysqli->executeQry($sql);
+		$last_id = $mysqli->insert_id();
+		if($last_id > 0)
+		{
+$body = '
+<table bgcolor="#FFFFFF" cellpadding="0" cellspacing="0" class="nl-container" role="presentation" style="table-layout: fixed; vertical-align: top; min-width: 320px; border-spacing: 0; border-collapse: collapse; mso-table-lspace: 0pt; mso-table-rspace: 0pt; background-color: #FFFFFF; width: 100%;" valign="top" width="100%">
+<tbody>
+<tr style="vertical-align: top;" valign="top">
+<td style="word-break: break-word; vertical-align: top;" valign="top">
+<div style="background-color:#fff;">
+<div style="border-collapse: collapse;display:background-color:#ffffff;">
+<div class="col num12" style="min-width: 320px; max-width: 600px; display: table-cell; vertical-align: top; width: 600px;">
+<div class="col_cont" style="width:100% !important;">
+<div style="border-top:0px solid transparent; border-left:0px solid transparent; border-bottom:0px solid transparent; border-right:0px solid transparent; padding-top:5px; padding-bottom:5px; padding-right: 0px; padding-left: 0px;">
+<div align="center" class="img-container center autowidth" style="padding-right: 0px;padding-left: 0px;">
+<div style="font-size:1px;line-height:15px"> </div><img align="center" alt="Sagacious Ip logo" border="0" class="center autowidth" src="https://sagaciousresearch.com/green100index/images/sagacious-ip-logo.png" style="text-decoration: none; -ms-interpolation-mode: bicubic; height: auto; border: 0; width: 100%; max-width: 230px; display: block;" title="Burger Shop logo" width="121"/>
+<div style="font-size:1px;line-height:20px"></div>
+</div>
+<div style="color:#393d47;font-family:Arial, Helvetica Neue, Helvetica, sans-serif;line-height:1.2;">
+<div class="txtTinyMce-wrapper" style="font-size: 14px; line-height: 1.2; font-family: Arial, Helvetica Neue, Helvetica, sans-serif; color: #393d47; mso-line-height-alt: 17px;">
+<p style="margin: 0; font-size: 18px; line-height: 1.2; word-break: break-word; mso-line-height-alt: 22px; margin-top: 20px; margin-bottom: 10px;"><span style="font-size: 14px;">Dear User,</span></p>
+<div class="txtTinyMce-wrapper" style="font-size: 14px; line-height: 1.2; font-family: Arial, Helvetica Neue, Helvetica, sans-serif; color: #393d47; mso-line-height-alt: 17px;">
+<p style="margin: 0; font-size: 18px; line-height: 1.2; word-break: break-word;  mso-line-height-alt: 22px; margin-top: 0; margin-bottom: 0;"><span style="font-size: 15px;">Thank you for exploring the GREEN100 index.</span></p>
+</div>
+<div class="txtTinyMce-wrapper" style="font-size: 14px; line-height: 1.2; font-family: Arial, Helvetica Neue, Helvetica, sans-serif; color: #393d47; mso-line-height-alt: 17px;">
+<p style="margin: 0; font-size: 20px; line-height: 1.2; word-break: break-word;  mso-line-height-alt: 22px; margin-top: 10px; margin-bottom: 0;"><span style="font-size: 16px;">Please find attached the comparison matrix as generated by you on the portal.</span></p>
+</div>
+</div>
+</div>
+<div align="center" class="img-container center autowidth" style="padding-right: 0px;padding-left: 0px;"><img align="center" alt="Green 100 Image" border="0" class="center autowidth" src="https://sagaciousresearch.com/green100index/images/background1.jpg" style="text-decoration: none; -ms-interpolation-mode: bicubic; height: auto; border: 0; width: 100%; max-width: 600px; display: block;" title="Image of three burgers" width="600"/>
+</div>
+
+<div style="color:#393d47;font-family:Helvetica Neue, Helvetica, Arial, sans-serif;line-height:1.2;">
+<div class="txtTinyMce-wrapper" style="font-size: 14px; line-height: 1.2; font-family: Arial, Helvetica Neue, Helvetica, sans-serif; color: #393d47; mso-line-height-alt: 17px;">
+<p style="margin: 0; font-size: 18px; line-height: 1.2; word-break: break-word;  mso-line-height-alt: 22px; margin-top: 0; margin-bottom: 0;"><span style="font-size: 14px;">Stay tuned for next year’s GREEN100 index !</span></p>
+</div>
+<div class="txtTinyMce-wrapper" style="font-size: 14px; line-height: 1.2; font-family: Arial, Helvetica Neue, Helvetica, sans-serif; color: #393d47; mso-line-height-alt: 17px;">
+<p style="margin: 0; font-size: 18px; line-height: 1.2; word-break: break-word;  mso-line-height-alt: 22px; margin-top: 10px; margin-bottom: 0;"><span style="font-size: 14px;">Cheers !<p>Green100 Team</p><p><a href="https://sagaciousresearch.com/green100">https://sagaciousresearch.com/green100</a></p></span></p>
+</div>
+</div>
+<table cellpadding="0" cellspacing="0" role="presentation" style="table-layout: fixed; vertical-align: top; border-spacing: 0; border-collapse: collapse; mso-table-lspace: 0pt; mso-table-rspace: 0pt;" valign="top" width="100%">
+<tr style="vertical-align: top;" valign="top">
+<td align="center" style="word-break: break-word; vertical-align: top; padding-bottom: 0px; padding-left: 0px; padding-right: 0px; padding-top: 15px; text-align: center; width: 100%;" valign="top" width="100%">
+
+</td>
+</tr>
+</table>
+</div>
+</div>
+</div>
+</div>
+</div>
+
+<table border="0" cellpadding="0" cellspacing="0" class="divider" role="presentation" style="table-layout: fixed; vertical-align: top; border-spacing: 0; border-collapse: collapse; mso-table-lspace: 0pt; mso-table-rspace: 0pt; min-width: 100%; -ms-text-size-adjust: 100%; -webkit-text-size-adjust: 100%;" valign="top" width="100%">
+<tbody>
+<tr style="vertical-align: top;" valign="top">
+<table align="center" border="0" cellpadding="0" cellspacing="0" class="divider_content" role="presentation" style="table-layout: fixed; vertical-align: top; border-spacing: 0; border-collapse: collapse; mso-table-lspace: 0pt; mso-table-rspace: 0pt; border-top: 2px solid #E8E8E8; width: 90%;" valign="top" width="90%">
+<tbody>
+<tr style="vertical-align: top;" valign="top">
+<td style="word-break: break-word; vertical-align: top; -ms-text-size-adjust: 100%; -webkit-text-size-adjust: 100%;" valign="top"><span></span></td>
+</tr>
+</tbody>
+</table>
+</tr>
+</tbody>
+</table>
+
+</td>
+</tr>
+</tbody>
+</table>';
+	
+			$subject = "GREEN100 Compare Results";
+			$attachmentPath = ABSOLUTE_ROOT.$path_name;
+			$tomail = $results_email;
+			$toname = '';
+			$log['Email_sent'] = $mysqli->sendEmailNotifocation($subject, $body, $attachmentPath, USER_EMAIL, APP_FULL_NAME , $tomail, $toname);
+			$log['Email_subject'] = $subject;
+			$log['Email_body'] = $body;
+		$response['msg_code'] = "00";
+		$response['msg'] = "Thank You ! We have sent you a mail. Please Check your inbox";
+		$response['data'] = "Success";
+	}
+	else
+	{
+		$response['msg_code'] = "01";
+		$response['msg'] = "Failed";
+		$response['data'] = "Failed";
+	}
+	echo json_encode($response);
+}
+
+else if($tab == 'selectedColumnsForm')
+{
+	$data = "";
+    if ((!isset($_POST['to']) || $_POST['to'] == '') && isset($_POST['patentSelectedColumns']) && ($_POST['patentSelectedColumns'] == 'DEFAULT' || $_POST['patentSelectedColumns'] == 'OK')) 
+	{
+		$_SESSION['search_result']['selected_columns'] = '';
+		unset($_SESSION['search_result']['selected_columns']);
+	}
+
+	if (isset($_POST['to']) && $_POST['to'] != '' && isset($_POST['patentSelectedColumns']) && $_POST['patentSelectedColumns'] == 'OK') 
+	{
+		$_SESSION['search_result']['selected_columns'] = '';
+		$_SESSION['search_result']['selected_columns'] = $_POST['to'];
+    }
+    
+	if (!isset($_SESSION['search_result']['selected_columns'])) 
+	{
+		$_SESSION['search_result']['selected_columns'] = $defaultColumns; // set default columns
+	}
+
+	$response['msg_code'] = "00";
+	$response['msg'] = "Success";
+	$response['data'] = $data;
+	echo json_encode($response);	
+}
+
+else if($tab == 'get_search_criteria')
+{
+	$str = "";
+	if(isset($_SESSION['search_criteria']) && count($_SESSION['search_criteria']) > 0)
+	{
+		$ctrl_id = "";
+		$ctrl_type = "";
+		foreach($_SESSION['search_criteria'] as $key=>$val)
+		{
+			if(count($val) > 0)
+			{
+				if(isset($val[2]) && $val[2] != "")
+				{
+					$ctrl_id = $val[2];
+				}
+				if(isset($val[3]) && $val[3] != "")
+				{
+					$ctrl_type = $val[3];
+				}
+				$rand = rand();
+				//$func = 'onclick="remove_chips(\''.$key.'\')"';				
+				$str .= '<div id="'.$rand.'" class="chip"><b>'.str_replace("_"," ",$key).'</b> : '.$val[0].'<span data-ctrl-type="'.$ctrl_type.'" data-ctrl-id="'.$ctrl_id.'" data-ctrl-key="'.$key.'" data-chipsid="'.$rand.'" class="closebtn" >×</span></div>';
+			}
+		}	
+		$response['msg_code'] = "00";
+		$response['msg'] = "Success";
+		$response['data'] = $str;
+	}
+	else
+	{
+		$response['msg_code'] = "0089";
+		$response['msg'] = "FAILED";
+		$response['data'] = "";
+	}
+	echo json_encode($response);	
+}
+
+else if($tab == 'remove_chips')
+{
+	$key = $_POST['key'];
+	//print_r($_SESSION['search_criteria'][$key]); exit;
+	unset($_SESSION['search_criteria'][$key]);
+	//print_r($_SESSION['search_criteria']); exit;
+	$response['msg_code'] = "00";
+	$response['msg'] = "Success";
+	$response['data'] = "Success";
+	echo json_encode($response);	
+}
+
+else if($tab == 'download_form')
+{
+	$log = array();
+	$con='';
+	if (!isset($sorting_field) )
+	{
+		$sorting_field = "id";
+		$sorting_type_val = "ASC";
+		
+	}
+	
+	if (isset($sorting_field) && $sorting_field == "")
+	{
+		$sorting_field = "id";
+		$sorting_type_val = "ASC";
+		
+	}
+	
+	if(isset($_SESSION['search_criteria']))
+	{
+		foreach($_SESSION['search_criteria'] as $key=>$val)
+		{
+			$con .= $val[1];
+		}
+	}
+	
+	//print_r($_POST);exit;
+		extract($_POST);
+	
+	$col = implode(",",$_SESSION['search_result']['selected_columns']);
+		 $sql = "select ".$col." from ".DATA." where 1  ".$con."  order by ".$sorting_field." ".$sorting_type_val." limit 46000";
+		$result = $mysqli->executeQry($sql) ; 
+		$result_feild = $result;
+		$data_file = "green100report_result".rand()."_".date("Ymdhsi").".csv";
+		$file1 = "downloads/".$data_file;
+        if (file_exists($file1))
+		{
+			unlink($file1);
+		}
+		
+		$i = 0;
+		while ($i < mysqli_num_fields($result_feild))
+		{
+		   $fld = mysqli_fetch_field($result_feild);
+		   $field_array[] = $fld->name;
+		   $i++;
+		}
+		
+		$file = fopen($file1,"w+");
+		$header = implode(',',$field_array);
+		fputs($file,"$header\n",1000000);
+		$k=1;
+		while($row = $mysqli->fetch_object($result))
+		{
+			$data_write = array();
+			foreach($row as $key=>$val)
+			{
+				$row_array[] = trim(str_replace(',','||',$val));
+			}
+			$data_write = implode(',',$row_array)."\n";
+			fputs($file,"$data_write",1000000); 
+			$data_write = "";
+			unset($row_array);
+		}
+        
+		fclose($file);
+        
+       
+        
+		$url = APP_URL.$file1;
+	
+	$sql = "INSERT IGNORE  INTO ".USER_REQUEST." SET  email = '".$email11."',file_url = '".$url."',ip = '".$mysqli->getUserIP()."'";
+	$result = $mysqli->executeQry($sql);
+	if($result)
+	{	
+		$mail = $email11;
+		$body = '
+<table bgcolor="#FFFFFF" cellpadding="0" cellspacing="0" class="nl-container" role="presentation" style="table-layout: fixed; vertical-align: top; min-width: 320px; border-spacing: 0; border-collapse: collapse; mso-table-lspace: 0pt; mso-table-rspace: 0pt; background-color: #FFFFFF; width: 100%;" valign="top" width="100%">
+<tbody>
+<tr style="vertical-align: top;" valign="top">
+<td style="word-break: break-word; vertical-align: top;" valign="top">
+<div style="background-color:#fff;">
+<div class="block-grid" style="min-width: 320px; max-width: 600px; overflow-wrap: break-word; word-wrap: break-word; word-break: break-word; Margin: 0 auto; background-color: #ffffff;">
+<div style="border-collapse: collapse;display: table;width: 100%;background-color:#ffffff;">
+<div class="col num12" style="min-width: 320px; max-width: 600px; display: table-cell; vertical-align: top; width: 600px;">
+<div class="col_cont" style="width:100% !important;">
+<div style="border-top:0px solid transparent; border-left:0px solid transparent; border-bottom:0px solid transparent; border-right:0px solid transparent; padding-top:5px; padding-bottom:5px; padding-right: 0px; padding-left: 0px;">
+<div align="center" class="img-container center autowidth" style="padding-right: 0px;padding-left: 0px;">
+<div style="font-size:1px;line-height:15px"> </div><img align="center" alt="Sagacious Ip logo" border="0" class="center autowidth" src="https://sagaciousresearch.com/green100index/images/sagacious-ip-logo.png" style="text-decoration: none; -ms-interpolation-mode: bicubic; height: auto; border: 0; width: 100%; max-width: 230px; display: block;" title="Burger Shop logo" width="121"/>
+<div style="font-size:1px;line-height:20px"> </div>
+</div>
+<table cellpadding="0" cellspacing="0" role="presentation" style="table-layout: fixed; vertical-align: top; border-spacing: 0; border-collapse: collapse; mso-table-lspace: 0pt; mso-table-rspace: 0pt;" valign="top" width="100%">
+<tr style="vertical-align: top;" valign="top">
+<td align="center" style="word-break: break-word; vertical-align: top; padding-bottom: 0px; padding-left: 10px; padding-right: 10px; padding-top: 0px; text-align: center; width: 100%;" valign="top" width="100%">
+</td>
+</tr>
+</table>
+<div style="color:#393d47;font-family:Arial, Helvetica Neue, Helvetica, sans-serif;line-height:1.2;padding-top:15px;padding-right:10px;padding-bottom:0px;padding-left:10px;">
+
+</div>
+<div align="center" class="img-container center autowidth" style="padding-right: 0px;padding-left: 0px;"><img align="center" alt="Green 100 Image" border="0" class="center autowidth" src="https://sagaciousresearch.com/green100index/images/background1.jpg" style="text-decoration: none; -ms-interpolation-mode: bicubic; height: auto; border: 0; width: 100%; max-width: 600px; display: block;" title="Image of three burgers" width="600"/>
+</div>
+<table cellpadding="0" cellspacing="0" role="presentation" style="table-layout: fixed; vertical-align: top; border-spacing: 0; border-collapse: collapse; mso-table-lspace: 0pt; mso-table-rspace: 0pt;" valign="top" width="100%">
+<tr style="vertical-align: top;" valign="top">
+<td align="center" style="word-break: break-word; vertical-align: top; padding-bottom: 0px; padding-left: 0px; padding-right: 0px; padding-top: 0px; text-align: center; width: 100%;" valign="top" width="100%">
+</td>
+</tr>
+</table>
+<div style="color:#393d47;font-family:Helvetica Neue, Helvetica, Arial, sans-serif;line-height:1.2;padding-top:15px;padding-right:10px;padding-bottom:0px;padding-left:10px;">
+<div class="txtTinyMce-wrapper" style="font-size: 14px; line-height: 1.2; font-family: Arial, Helvetica Neue, Helvetica, sans-serif; color: #393d47; mso-line-height-alt: 17px;">
+<p style="margin: 0; font-size: 18px; line-height: 1.2; word-break: break-word; text-align: center; mso-line-height-alt: 22px; margin-top: 0; margin-bottom: 0;"><span style="font-size: 18px;">Hello '.$email11.'</span></p>
+</div>
+<div class="txtTinyMce-wrapper" style="font-size: 14px; line-height: 1.2; font-family: Arial, Helvetica Neue, Helvetica, sans-serif; color: #393d47; mso-line-height-alt: 17px;">
+<p style="margin: 0; font-size: 18px; line-height: 1.2; word-break: break-word; text-align: center; mso-line-height-alt: 22px; margin-top: 0; margin-bottom: 0;"><span style="font-size: 18px;">Click on the button to download your search results</span></p>
+</div>
+</div>
+<table cellpadding="0" cellspacing="0" role="presentation" style="table-layout: fixed; vertical-align: top; border-spacing: 0; border-collapse: collapse; mso-table-lspace: 0pt; mso-table-rspace: 0pt;" valign="top" width="100%">
+<tr style="vertical-align: top;" valign="top">
+<td align="center" style="word-break: break-word; vertical-align: top; padding-bottom: 0px; padding-left: 0px; padding-right: 0px; padding-top: 15px; text-align: center; width: 100%;" valign="top" width="100%">
+<h1 style="color:#ffffff;direction:ltr;font-family:Helvetica Neue, Helvetica, Arial, sans-serif;font-size:24px;font-weight:normal;letter-spacing:normal;line-height:120%;text-align:-moz-center;margin-top:0;margin-bottom:0;"><strong><span style="color: #ffcc00;"><a class="downoadbutton" style=" display: block;width: 190px;height: 25px;background: #288A04;padding: 10px;text-align: -moz-center;border-radius: 5px;color: white;font-weight: bold;line-height: 25px;text-decoration:none;" href="'.$url.'">Download Now</a></span></strong></h1>
+</td>
+</tr>
+</table>
+</div>
+</div>
+</div>
+</div>
+</div>
+</div>
+<div style="background-color:#fff;">
+<div class="block-grid" style="min-width: 320px; max-width: 600px; overflow-wrap: break-word; word-wrap: break-word; word-break: break-word; Margin: 0 auto; background-color: #ffffff;">
+<div style="border-collapse: collapse;display: table;width: 100%;background-color:#ffffff;">
+<div class="col num12" style="min-width: 320px; max-width: 600px; display: table-cell; vertical-align: top; width: 600px;">
+<div class="col_cont" style="width:100% !important;">
+<div style="border-top:0px solid transparent; border-left:0px solid transparent; border-bottom:0px solid transparent; border-right:0px solid transparent; padding-top:20px; padding-bottom:5px; padding-right: 0px; padding-left: 0px;">
+<table border="0" cellpadding="0" cellspacing="0" class="divider" role="presentation" style="table-layout: fixed; vertical-align: top; border-spacing: 0; border-collapse: collapse; mso-table-lspace: 0pt; mso-table-rspace: 0pt; min-width: 100%; -ms-text-size-adjust: 100%; -webkit-text-size-adjust: 100%;" valign="top" width="100%">
+<tbody>
+<tr style="vertical-align: top;" valign="top">
+<td class="divider_inner" style="word-break: break-word; vertical-align: top; min-width: 100%; -ms-text-size-adjust: 100%; -webkit-text-size-adjust: 100%; padding-top: 20px; padding-right: 10px; padding-bottom: 20px; padding-left: 10px;" valign="top">
+<table align="center" border="0" cellpadding="0" cellspacing="0" class="divider_content" role="presentation" style="table-layout: fixed; vertical-align: top; border-spacing: 0; border-collapse: collapse; mso-table-lspace: 0pt; mso-table-rspace: 0pt; border-top: 2px solid #E8E8E8; width: 90%;" valign="top" width="90%">
+<tbody>
+<tr style="vertical-align: top;" valign="top">
+<td style="word-break: break-word; vertical-align: top; -ms-text-size-adjust: 100%; -webkit-text-size-adjust: 100%;" valign="top"><span></span></td>
+</tr>
+</tbody>
+</table>
+</td>
+</tr>
+</tbody>
+</table>
+
+<div style="color:#C0C0C0;font-family:Helvetica Neue, Helvetica, Arial, sans-serif;line-height:1.2;size:12;padding-top:10px;padding-right:10px;padding-bottom:10px;padding-left:10px;">
+<div class="txtTinyMce-wrapper" style="color: #C0C0C0; font-size: 12px; line-height: 1.2; font-family: Helvetica Neue, Helvetica, Arial, sans-serif; size: 12; mso-line-height-alt: 14px;">
+<p style="margin: 0; font-size: 12px; line-height: 1.2; text-align: center; word-break: break-word; mso-line-height-alt: 14px; margin-top: 0; margin-bottom: 0;"><span style="color: #C0C0C0;">Copyright © 2021  Sagacious IP </span></p>
+</div>
+</div>
+</div>
+</div>
+</div>
+</div>
+</div>
+</div>
+
+</td>
+</tr>
+</tbody>
+</table>';
+	
+			$subject = "Green 100 Search Report";
+			$tomail = $mail;
+			$toname = '';
+			$log['Email_sent'] = $mysqli->sendEmailNotifocation($subject, $body,'', USER_EMAIL, APP_FULL_NAME , $tomail, $toname);
+			$log['Email_subject'] = $subject;
+			$log['Email_body'] = $body;
+	
+	
+		 
+		$response['msg_code'] = "00";
+		$response['msg'] = "Thank You ! We have sent you a mail. Please Check your inbox";
+		$response['data'] = "Success";
+	}
+	else
+	{
+		$response['msg_code'] = "01";
+		$response['msg'] = "Failed";
+		$response['data'] = "Failed";
+	}
+	echo json_encode($response);	
+}
+else if(isset($tab) && $tab != "" && $tab == 'get_search_results')
+{
+	if (!isset($_SESSION['search_result']['selected_columns'])) 
+	{
+    	$_SESSION['search_result']['selected_columns'] = $defaultColumns; // set default columns
+	}
+		
+	extract($_POST);
+	$con = "";
+	
+	if (!isset($sorting_field) )
+	{
+		$sorting_field = "green_rank";
+		$sorting_type_val = "ASC";
+		
+	}
+	
+	if (isset($sorting_field) && $sorting_field == "")
+	{
+		$sorting_field = "green_rank";
+		$sorting_type_val = "ASC";
+		
+	}
+
+	if (!isset($page) || $page < 1) {
+		$page = 1;
+	}
+
+	if (!isset($disp_rec) || $disp_rec == "") {
+		$disp_rec = 10;
+		$per_page = 10;
+	}
+
+	if (isset($record_limit)) {
+		$disp_rec = $record_limit;
+		$per_page = $disp_rec;
+	}
+
+	if (isset($page)) {
+		$start    = (($page - 1) * $disp_rec);
+		$cur_page = $page;
+	} else {
+		$page  = 1;
+		$start = 1;
+	}
+	
+	if((isset($search_input) && $search_input != '') || (isset($filtered_search_input) && $filtered_search_input != ''))
+	{
+		if($search_input != '')
+		{
+			$sinput = $search_input;
+		}
+		else
+		{
+			$input = $filtered_search_input;
+		}
+		$str = "";
+		$w = 0;
+		//$arr_search_input =  array( "green_rank", "green_organization", "hq_country", "green_rank_within_country", "primary_industries", "green_rank_within_industry", "green_portfolio_impact_score", "absolute_green_portfolio_size", "total_industries_impact", "average_geographical_spread", "percentage_quality_patents_green_portfolio", "green_portfolio_grant_ratio");
+		
+        foreach($arr_search_input as $val) {
+			if ($w == 0) {
+				$str .= "(".$val." = '".$sinput."'";
+			} else {
+				$str .= " OR ".$val." = '".$sinput."'"; 
+			}	
+			$w++;			
+		}
+		//$con .= " AND ".$str.")";
+		$_SESSION['search_criteria']['main_search'][0] = $sinput;
+		$_SESSION['search_criteria']['main_search'][1] = " AND ".$str.")";
+		$_SESSION['search_criteria']['main_search'][2] = "search_input";
+		$_SESSION['search_criteria']['main_search'][3] = "txtbox";
+	}
+	
+	if((isset($sub_search_input) && $sub_search_input != ''))
+	{
+		$str = "";
+		$w = 0;
+		if(isset($_SESSION['search_result']['selected_columns']))
+		{
+			$arr_search_input = $_SESSION['search_result']['selected_columns'];
+			//$arr_search_input =  array( "green_rank", "assignee", "portfolio_size", "unscored_patents", "sum_granted_patents", "grant_ratio", "weighted_index_value", "company_index_score");
+		}
+		else
+		{
+			$arr_search_input = $defaultColumns;
+		}
+		
+		foreach($arr_search_input as $val)
+		{
+			if ($w == 0)
+			{
+				$str .= "(".$val." like '%".$sub_search_input."%'";
+			}
+			else
+			{
+				$str .= " OR ".$val." like '%".$sub_search_input."%'"; 
+			}	
+			$w++;			
+		}
+		//$con .= " AND ".$str.")";
+		$_SESSION['search_criteria']['sub_search'][0] = $sub_search_input;
+		$_SESSION['search_criteria']['sub_search'][1] = " AND ".$str.")";
+		$_SESSION['search_criteria']['sub_search'][2] = "sub_search_input";
+		$_SESSION['search_criteria']['sub_search'][3] = "txtbox";
+	}
+	
+	if((isset($sub_search_input) && $sub_search_input == ''))
+	{
+		unset($_SESSION['search_criteria']['sub_search']);
+	}
+	
+		if((isset($sub_search_input_main) && $sub_search_input_main != ''))
+	{
+		$str = "";
+		$w = 0;
+		if(isset($_SESSION['search_result']['selected_columns']))
+		{
+			$arr_search_input = $_SESSION['search_result']['selected_columns'];
+			//$arr_search_input =  array( "green_rank", "assignee", "portfolio_size", "unscored_patents", "sum_granted_patents", "grant_ratio", "weighted_index_value", "company_index_score");
+		}
+		else
+		{
+			$arr_search_input = $defaultColumns;
+		}
+		
+		foreach($arr_search_input as $val)
+		{
+			if ($w == 0)
+			{
+				$str .= "(".$val." like '%".$sub_search_input_main."%'";
+			}
+			else
+			{
+				$str .= " OR ".$val." like '%".$sub_search_input_main."%'"; 
+			}	
+			$w++;			
+		}
+		//$con .= " AND ".$str.")";
+		$_SESSION['search_criteria']['main_search'][0] = $sub_search_input_main;
+		$_SESSION['search_criteria']['main_search'][1] = " AND ".$str.")";
+		$_SESSION['search_criteria']['main_search'][2] = "sub_search_input_main";
+		$_SESSION['search_criteria']['main_search'][3] = "txtbox";
+	}
+	
+	if((isset($sub_search_input_main) && $sub_search_input_main == ''))
+	{
+		unset($_SESSION['search_criteria']['main_search']);
+	}
+
+	
+    if((isset($green_organization) && count($green_organization) > 0))
+	{
+		
+		//$con .= " AND type IN ('".implode("', '",$type)."') ";
+		$_SESSION['search_criteria']['green_organization'][0] = implode("/",$green_organization);
+		$_SESSION['search_criteria']['green_organization'][1] = " AND green_organization IN ('".implode("', '",$green_organization)."') ";
+		$_SESSION['search_criteria']['green_organization'][2] = "green_organizationid";
+		$_SESSION['search_criteria']['green_organization'][3] = "multi_ddl";
+	}
+    
+	if((isset($hq_country) && count($hq_country) > 0))
+	{
+		//$con .= " AND technology IN ('".implode("', '",$technology)."') ";
+		$_SESSION['search_criteria']['hq_country'][0] = implode("/",$hq_country); 
+		$_SESSION['search_criteria']['hq_country'][1] = " AND hq_country IN ('".implode("', '",$hq_country)."') ";
+		$_SESSION['search_criteria']['hq_country'][2] = "hq_countryid";
+		$_SESSION['search_criteria']['hq_country'][3] = "multi_ddl";
+	}
+	
+	if((isset($primary_industry) && count($primary_industry) > 0))
+	{
+		//$con .= " AND legal_status IN ('".implode("', '",$legal_status)."') ";
+		$_SESSION['search_criteria']['primary_industry'][0] = implode("/",$primary_industry); 
+		$_SESSION['search_criteria']['primary_industry'][1] = " AND primary_industries IN ('".implode("', '",$primary_industry)."') ";
+		$_SESSION['search_criteria']['primary_industry'][2] = "primary_industryid";
+		$_SESSION['search_criteria']['primary_industry'][3] = "multi_ddl";
+	}
+	
+	if((isset($impact_score) && count($impact_score) > 0))
+	{
+		//$con .= " AND patent_offices IN ('".implode("', '",$patent_offices)."') ";
+		$_SESSION['search_criteria']['impact_score'][0] = implode("/",$impact_score);
+		$_SESSION['search_criteria']['impact_score'][1] = " AND green_portfolio_impact_score IN ('".implode("', '",$impact_score)."') ";
+		$_SESSION['search_criteria']['impact_score'][2] = "impact_scoreid";
+		$_SESSION['search_criteria']['impact_score'][3] = "multi_ddl";
+	}
+	
+	
+    
+	if(isset($_SESSION['search_criteria']))
+	{
+		foreach($_SESSION['search_criteria'] as $key=>$val)
+		{
+			$con .= $val[1];
+		}
+	}
+	
+	/*
+	if(isset($_SESSION['search_sql']) && $_SESSION['search_sql'] != '')
+	{
+		$con .= $_SESSION['search_sql'];
+	}
+	*/
+	if($download != '')
+	{
+		//print_r($_POST);exit;
+		$col = implode(",",$_SESSION['search_result']['selected_columns']);
+		 $sql = "select ".$col." from ".GREENDATA." where 1  ".$con."  order by ".$sorting_field." ".$sorting_type_val." limit 46000";
+		$result = $mysqli->executeQry($sql) ; 
+		$result_feild = $result;
+		$data_file = "green100report_result".rand()."_".date("Ymdhsi").".csv";
+		$file1 = "downloads/".$data_file;
+        if (file_exists($file1))
+		{
+			unlink($file1);
+		}
+		
+		$i = 0;
+		while ($i < mysqli_num_fields($result_feild))
+		{
+		   $fld = mysqli_fetch_field($result_feild);
+		   $field_array[] = $fld->name;
+		   $i++;
+		}
+		
+		$file = fopen($file1,"w+");
+		$header = implode(',',$field_array);
+		fputs($file,"$header\n",1000000);
+		$k=1;
+		while($row = $mysqli->fetch_object($result))
+		{
+			$data_write = array();
+			foreach($row as $key=>$val)
+			{
+				$row_array[] = trim(str_replace(',','||',$val));
+			}
+			$data_write = implode(',',$row_array)."\n";
+			fputs($file,"$data_write",1000000); 
+			$data_write = "";
+			unset($row_array);
+		}
+        
+		fclose($file);
+        
+       
+        
+		echo APP_URL.$file1;		
+		exit;
+	} 
+	
+	if(isset($select_chk) && count($select_chk) > 0)
+	{
+		$con .= " AND id in (".implode(',',$select_chk).")";
+	}
+	//echo $con;
+	
+	 $sql = "select * from ".GREENDATA." where 1  ".$con." order by ".$sorting_field." ".$sorting_type_val." limit ".$start.",".$disp_rec;
+	$result = $mysqli->executeQry($sql) ; 
+	
+	
+	$sql123 = "select count(id) as count_rows from ".GREENDATA." where 1 ".$con;
+	$result123 = $mysqli->executeQry($sql123) ; 
+	$num_arr = $mysqli->fetch_array($result123);
+	//print_r($num_arr);exit;
+	$num = $num_arr['count_rows'];
+	//print_r($num);exit;
+	$row = "";	 
+	//echo "<p>".$num." Results found</p>";
+	if($num > 0)
+	{						
+		$count             = $num;
+		$no_of_paginations = ceil($count / $per_page);
+		$cur_page          = $cur_page;
+		$previous_btn      = true;
+		$next_btn          = true;
+		$first_btn         = true;
+		$last_btn          = true;
+	
+		$table = '<div class="col-lg-12 p-0 bg-white"><div class="table-responsive">
+							<table id="dataTable" class="table table-striped table-borderless" width="100%">
+								  <thead>
+									<!--<tr><th><nobr>Compare</nobr><th><nobr>Cart</nobr></th>-->';
+									
+									$sql_col = "SHOW COLUMNS FROM ".GREENDATA."";
+									$result_col = $mysqli->executeQry($sql_col);
+									$arr_skip = array('id');
+                                    //print_r($result_col);exit;
+                                    $set_column_data = array();    
+									while($row_col = $mysqli->fetch_assoc($result_col))
+									{
+										if(in_array($row_col['Field'], $arr_skip))
+										{
+											continue;
+										}
+										
+										if (isset($_SESSION['search_result']['selected_columns']) && in_array($row_col['Field'], $_SESSION['search_result']['selected_columns'])) {
+                                            
+                                            $val = $row_col['Field'];
+                                            $actule_val = $row_col['Field']; if($val == 'assignee')
+											{
+												$val = "Green Organization";
+											}
+											if(isset($sorting_field) && $sorting_field == $actule_val)
+											{
+												if ($sorting_type_val == 'DESC') 
+												{
+													$sorting_icon = 'fa-sort-amount-desc';
+													$sorting_type = 'ASC';	
+												} 
+												else 
+												{
+													$sorting_icon = 'fa-sort-amount-asc';
+													$sorting_type = 'DESC';	
+												} 
+											}
+											else
+											{
+												$sorting_icon = 'fa-sort-amount-asc';
+												$sorting_type = 'DESC';
+											}
+											//$table .=  '<th class="dataSort" style="cursor: pointer;" data-sorting-field="'.$actule_val.'" data-sorting-type="'.$sorting_type.'" ><nobr>'.ucwords(str_replace("_"," ",$val)).'&nbsp;<i style="display:; color: #80806e;" class="fa '.$sorting_icon.'"></i></nobr></th>';
+                                            $set_column_data[$row_col['Field']] =  '<th class="dataSort" style="cursor: pointer;" data-sorting-field="'.$actule_val.'" data-sorting-type="'.$sorting_type.'" ><nobr>'.ucwords(str_replace("_"," ",$val)).'&nbsp;<i style="display:; color: #80806e;" class="fa '.$sorting_icon.'"></i></nobr></th>';
+                                        }
+                    				}
+                                    
+                                    foreach($_SESSION['search_result']['selected_columns'] as $fied){
+                                        $table .=  $set_column_data[$fied];
+                                    }
+                                    
+							$table .= '</tr>
+								  </thead>
+								  <tbody>';
+								  
+								$n = 1;
+								$data = "";
+								while($rows = $mysqli->fetch_assoc($result))
+								{	
+									$i = ($start + $n);
+									
+									foreach($rows as $key=>$val)
+									{
+										//print_r($rows);
+										if(strlen($val) > 25)
+										{
+											$iden = rand();
+											$id = $mysqli->encode('c='.$rows['id'].'');
+											$val = '<a href="details.php?'.$id.'" data-toggle="tooltip" data-html="true" title="'.$val.'" >'.substr($val,0,25).'...</a>';
+										}
+										$rows[$key] = $val;
+									}
+									
+                                   
+									$table .= "<tr>";
+									$id = $rows['id'];
+									//print_r($_SESSION['selected_key']);exit;
+									 $arr_selected = explode(',',$_SESSION['selected_key']);
+									 //print_r($arr_selected);
+									 $selected = '';
+									
+									if(in_array($id, $arr_selected))
+										{
+											$selected = 'checked="checked"';
+										}
+										
+									
+                                       /*  $table .= '<td><nobr>&nbsp:&nbsp;&nbsp;<div style="min-height: 1.0rem;" class="custom-control custom-checkbox">
+										  <input onclick="updateCount(this)" id="customCheck'.$id.'"  type="checkbox" value="'.$id.'" name="select_chk[]" class="custom-control-input patent-checkbox" >
+										  <label class="custom-control-label" for="customCheck'.$id.'">&nbsp;</label>
+										</div> </nobr></td>';
+										 $table .= '<td><nobr>&nbsp:&nbsp;&nbsp;<div style="min-height: 1.0rem;" class="custom-control custom-checkbox">
+										  <input onclick="buynowCount(this)" id="buynow'.$id.'"  type="checkbox" value="'.$id.'" name="buynow_chk[]" class="custom-control-input patent-checkbox" '.$selected.'>
+										  <label class="custom-control-label" for="buynow'.$id.'">&nbsp;</label>
+										</div> </nobr></td>'; */
+									//$data_to_show = array();
+                                    
+                                    //$table .= "<td class><nobr>".$i."</nobr></td>";
+                                 
+                                    foreach($_SESSION['search_result']['selected_columns'] as $fied){
+										$didsg = $mysqli->encode('c='.$rows['id'].'');
+                                       
+                                        
+                                        $table .=  '<td class="'.$fied.'" ><nobr><a href="details.php?'.$didsg.'">'.$rows[$fied].'</a></nobr></td>';
+                                    }
+                                     
+                                    $table .= "</tr>";
+                                    $n++;
+								}
+								 $table .= "</tbody></table>
+                                 ";
+							$table .= '</div><div class="col-lg-12 p-0 bg-white pull-right">';				
+							$table .= $mysqli->custompaging($cur_page, $no_of_paginations, $previous_btn, $next_btn, $first_btn, $last_btn);
+							$table .= '<input type="hidden" id="total_result_found" value="'.$num.'" />';	
+                            $table .= '</div></div>';	
+	}
+	else
+	{
+		$table = '<div class="card-body"><div class="alert alert-danger mb-0"><strong>!!</strong> No record found.</div></div>';
+		$table .= '<input type="hidden" id="total_result_found" value="0" />';	
+	}
+	
+	echo $table ;
+}
+else if(isset($tab) && $tab != "" && $tab == 'save_search_data')
+{
+    if(isset($_SESSION['login_id']) || isset($_COOKIE['lead_generation_user']))
+	{
+        $con = "";
+        if(isset($_SESSION['search_criteria']))
+        {
+            foreach($_SESSION['search_criteria'] as $key=>$val)
+            {
+                $con .= $val[1];
+            }
+        }
+		
+		if($con != "")
+		{
+            $user = $_SESSION['login_id'];
+			$search_his = $con." order by ".$sorting_field." ".$sorting_type_val." limit ".$start.",".$disp_rec;	
+			$che_existing_row = $mysqli->singleRowAssoc_new("*", SEARCH_HISTORY ,' search_str = "'.addslashes($search_his).'" AND user_id = "'.$user.'"');
+			if(count($che_existing_row) == 0 )
+			{
+				
+				if($user == '')
+				{
+					$user = $_COOKIE['lead_generation_user'];
+				}
+                
+                $search_data = json_encode($_SESSION['search_criteria']);
+                
+				$search_history_sql = 'INSERT IGNORE INTO '.SEARCH_HISTORY.' SET search_str = "'.addslashes($search_his).'" , user_id = "'.$user.'", recTimestamp = now() , search_request_data ="'.addslashes($search_data).'",search_type ="1", comment = "'.addslashes($comment).'" ';
+				$result_history = $mysqli->executeQry($search_history_sql) ;
+            }    
+		}
+
+        $response['msg_code'] = "00";
+        $response['msg'] = "Success";
+    }
+    else
+    {
+        $response['msg_code'] = "02";
+        $response['msg'] = "Please login and try again";
+    }
+    echo json_encode($response);
+}
+else if(isset($tab) && $tab != "" && $tab == 'get_search_history')
+{
+    if(!check_user_session()){
+        $response['msg_code'] = "20";
+        $response['msg'] = "Your Session has been Expired";
+        echo json_encode($response);
+        exit;
+    }
+    
+    $page  = $_POST['page'];
+    $record_limit  = $_POST['record_limit'];
+	
+	if (!isset($page) || $page < 1) {
+		$page = 1;
+	}
+
+	if (!isset($disp_rec) || $disp_rec == "") {
+		$disp_rec = 10;
+		$per_page = 10;
+	}
+
+	if (isset($record_limit)) {
+		$disp_rec = $record_limit;
+		$per_page = $disp_rec;
+	}
+
+	if (isset($page)) {
+		$start    = (($page - 1) * $disp_rec);
+		$cur_page = $page;
+	} else {
+		$page  = 1;
+		$start = 1;
+	}
+
+    if($_POST['search_type']=='saved'){
+        $condition = " AND search_type ='1'";   
+    }else{
+        $condition = " AND search_type !='1'";   
+    }
+    
+	
+	$sql = "select * from ".SEARCH_HISTORY." where 1 and user_id = '".$_SESSION['login_id']."' ".$condition." ORDER BY recTimestamp DESC limit ".$start.",".$disp_rec;
+	$result = $mysqli->executeQry($sql) ; 
+	 
+	
+	$sql123 = "select count(id) as count_rows from ".SEARCH_HISTORY." where 1 and user_id = '".$_SESSION['login_id']."' ".$condition." ";
+	$result123 = $mysqli->executeQry($sql123) ; 
+	$num_arr = $mysqli->fetch_array($result123);
+	$num = $num_arr['count_rows'];
+	$row = "";	 
+	if($num > 0)
+	{						
+		$count             = $num;
+		$no_of_paginations = ceil($count / $per_page);
+		$cur_page          = $cur_page;
+		$previous_btn      = true;
+		$next_btn          = true;
+		$first_btn         = true;
+		$last_btn          = true;
+		
+		$table = '<div class="table-responsive">
+							<table id="dataTable" class="table table-striped table-borderless" width="100%">
+								  <thead>
+									<tr>
+									  <th>SN.</th>
+									  <th>Action</th>
+									  <th style="width:300px;" >Search String</th>
+									  <th>Date</th>
+									</tr>
+								  </thead>
+								  <tbody>';
+		$n = 1;
+		$data = "";
+		while($rows = $mysqli->fetch_assoc($result))
+		{	
+			$i = ($start + $n);
+			$table .= "<tr>";									
+			$table .= "<td><nobr>".$i."</nobr></td>";
+			$table .= "<td><nobr><a  target=\"_blank\" href=\"loadSearchReqiest.php?id=".$rows['id']."\"   class='btn-sm btn-info' >View</a></nobr></td>";
+			$val = $rows['search_str'];
+			$query_string = '';
+            if($val!=''){
+                $query_part = explode(' order by ',$val); 
+                $query_string = $query_part[0];   
+                $query_string = trim($query_string);    
+                $query_string = trim($query_string,'OR');    
+                $query_string = trim($query_string,'AND');    
+                $query_string = trim($query_string);    
+            }
+
+            if(strlen($query_string) > 50)
+			{
+				$iden = rand();				
+				$query_string = substr($query_string,0,50).'...&nbsp;<a class="popover123" id="'.$iden.'" data-id="'.$iden.'" href="javascript:void(0);"  data-trigger="focus" data-container="body" data-placement="top" data-toggle="popover" data-content="'.$query_string.'" ><i class="fa fa-hand-o-right" aria-hidden="true"></i></a>';
+			}
+			
+			$table .= '<td><nobr>'.$query_string.'</nobr></td>';
+			$table .= '<td><nobr>'.$rows['recTimestamp'].'</nobr></td>';
+			$table .= "</tr>";
+			$n++;
+		}
+		$table .= "</tbody></table></div>";
+		$table .= '</br>';	
+		$table .= $mysqli->custompaging($cur_page, $no_of_paginations, $previous_btn, $next_btn, $first_btn, $last_btn);
+		$table .= '<input type="hidden" id="total_result_found" value="'.$num.'" /></br>';	
+	}
+	else
+	{
+		$table = '<div class="card-body"><div class="alert alert-danger"><strong>!!</strong> No record found.</div></div>';
+		$table .= '<input type="hidden" id="total_result_found" value="0" /></br>';	
+	}
+	
+	echo $table ;
+
+
+}
+else if(isset($tab) && $tab != "" && $tab == 'get_your_request')
+{
+    if(!check_user_session()){
+        $response['msg_code'] = "20";
+        $response['msg'] = "Your Session has been Expired";
+        echo json_encode($response);
+        exit;
+    }
+    
+    $page  = $_POST['page'];
+    $record_limit  = $_POST['record_limit'];
+	
+	if (!isset($page) || $page < 1) {
+		$page = 1;
+	}
+
+	if (!isset($disp_rec) || $disp_rec == "") {
+		$disp_rec = 10;
+		$per_page = 10;
+	}
+
+	if (isset($record_limit)) {
+		$disp_rec = $record_limit;
+		$per_page = $disp_rec;
+	}
+
+	if (isset($page)) {
+		$start    = (($page - 1) * $disp_rec);
+		$cur_page = $page;
+	} else {
+		$page  = 1;
+		$start = 1;
+	}
+	
+	
+	$sql = "select * from ".USER_REQUEST." where 1 and ( user_id = '".$_SESSION['user_id']."' OR email ='".$_SESSION['login_id']."')  ORDER BY `id` DESC limit ".$start.",".$disp_rec;
+	$result = $mysqli->executeQry($sql) ; 
+	 
+	
+	$sql123 = "select count(id) as count_rows from ".USER_REQUEST." where 1 and ( user_id = '".$_SESSION['user_id']."' OR email ='".$_SESSION['login_id']."') ";
+	$result123 = $mysqli->executeQry($sql123) ; 
+	$num_arr = $mysqli->fetch_array($result123);
+	$num = $num_arr['count_rows'];
+	$row = "";	 
+	if($num > 0)
+	{						
+		$count             = $num;
+		$no_of_paginations = ceil($count / $per_page);
+		$cur_page          = $cur_page;
+		$previous_btn      = true;
+		$next_btn          = true;
+		$first_btn         = true;
+		$last_btn          = true;
+		
+		$table = '<div class="table-responsive">
+                    <table id="dataTable" class="table table-striped table-borderless" width="100%">
+                        <thead>
+                            <tr>
+                                <th>SN.</th>
+                                <th>Name</th>
+                                <th>Contact</th>
+                                <th style="width:250px" >Message</th>
+                                <th style="width:250px" >Request Type</th>
+                            </tr>
+                        </thead>
+                        <tbody>';
+                            
+                        $n = 1;
+                        $data = "";
+                        while($rows = $mysqli->fetch_assoc($result))
+                        {	
+                            $i = ($start + $n);
+                            $table .= "<tr>";									
+                            $table .= "<td><nobr>".$i."</nobr></td>";
+                            //$table .= "<td><nobr><a  target=\"_blank\" href=\"loadSearchReqiest.php?id=".$rows['id']."\"   class='btn btn-info' >View</a></nobr></td>";
+                            $table .= '<td><nobr>'.$rows['name'].'</nobr></td>';
+                            $table .= '<td><nobr>'.$rows['contact'].'</nobr></td>';
+                            $val = $rows['message'];
+                            
+                            if(strlen($rows['message']) > 50){
+                                $iden = rand();				
+                                $val = substr($val,0,50).'...&nbsp;<a class="popover123" id="'.$iden.'" data-id="'.$iden.'" href="javascript:void(0);"  data-trigger="focus" data-container="body" data-placement="top" data-toggle="popover" data-content="'.$val.'" ><i class="fa fa-hand-o-right" aria-hidden="true"></i></a>';
+                            }
+                            
+                            $table .= '<td><nobr>'.$val.'</nobr></td>';
+                            
+                            $requestType  = json_decode($rows['request_type']);
+                            
+                            if($requestType){
+                                $valRT = implode(',',$requestType);
+                                if(strlen($rows['request_type']) > 50){
+                                    $iden = rand();				
+                                    $valRT = substr($valRT,0,50).'...&nbsp;<a class="popover123" id="rt'.$iden.'" data-id="rt'.$iden.'" href="javascript:void(0);"  data-trigger="focus" data-container="body" data-placement="top" data-toggle="popover" data-content="'.$valRT.'" ><i class="fa fa-hand-o-right" aria-hidden="true"></i></a>';
+                                }
+                            }
+                            
+                            $table .= '<td><nobr>'.$valRT.'</nobr></td>';
+                            //$table .= '<td><nobr>'.$rows['recTimestamp'].'</nobr></td>';
+                            $table .= "</tr>";
+                            $n++;
+                        }
+		$table .= "</tbody>";
+        $table .= "</table>";
+        $table .= "</div>";
+		$table .= '</br>';				
+		$table .= $mysqli->custompaging($cur_page, $no_of_paginations, $previous_btn, $next_btn, $first_btn, $last_btn);
+		$table .= '<input type="hidden" id="total_result_found" value="'.$num.'" /></br>';	
+	} else {
+		$table = '<div class="card-body"><div class="alert alert-danger"><strong>!!</strong> No record found.</div></div>';
+		$table .= '<input type="hidden" id="total_result_found" value="0" /></br>';	
+	}
+	echo $table ;
+}
+else if(isset($tab) && $tab != "" && $tab == 'visitor_login')
+{
+	$loginId = trim($_POST['loginId']);			
+	$password = $mysqli->encode($_POST['password']);
+	$login=sprintf("select * from ".USERS." where email='%s' and password='%s'", $mysqli->escape($loginId),$mysqli->escape($password));
+	$res=$mysqli->executeQry($login);
+	$total=$mysqli->getTotalRow($res);
+	if ($total>0)
+	{
+		$row=$mysqli->fetch_array($res);
+		if($row['active']== 'Y')
+		{
+            $_SESSION['admin_id']= $row['id'];
+			$_SESSION['lead_generation'] = "1";
+			$_SESSION['user_id']= $row['id'];                                                       
+			$_SESSION['login_id']= $row['email'];                                                        
+			$_SESSION['name']= $row['name'];                                                       
+			$_SESSION['user_type']= $row['user_type'];                                                       
+			$_SESSION['contact']= $row['mobile'];                                                       
+			$response['msg_code'] = "00";
+			$response['msg'] = "Login Successfull.";
+			$response['user_type'] = $_SESSION['user_type']= $row['user_type'];
+		}
+	}
+	else
+	{
+		$response['msg_code'] = "03";
+		$response['msg'] = "Incorrect Login details.";
+	}
+    if($response['msg_code'] == '00')
+    {
+        $sql_history = "Insert into tbl_login_history SET login_id = '".$row['email']."', cust_id ='".$row['id']."', signIn = now(), ip = '".$mysqli->get_user_ip()."', session_id = '".session_id()."', user_type = '".$_SESSION['user_type']."'";
+        $res_history = $mysqli->executeQry($sql_history); 
+    }
+	echo json_encode($response);	
+}
+else if(isset($tab) && $tab != "" && $tab == 'forgot_password')
+{
+    $loginId = trim($_POST['forget_pass_email']);			
+	$login=sprintf("select * from ".USERS." where email='%s' ", $mysqli->escape($loginId));
+	$res=$mysqli->executeQry($login);
+	$total=$mysqli->getTotalRow($res);
+	if ($total>0)
+	{
+		$row=$mysqli->fetch_array($res);
+        
+		if($row['active']== 'Y')
+		{
+            $password1 = $mysqli->generateRandomString("12","");
+            $password = $mysqli->encode($password1);
+            $sql = "UPDATE ".USERS." SET password = '".$password ."' WHERE id ='".$row['id']."'";
+            $result = $mysqli->executeQry($sql);
+            if($result)
+            {
+                $user_id = $mysqli->insert_id();
+                $body = $mysqli->forgot_password_email_tmpl($row['name'], $password1,"");
+                $subject = "Login  Detail - ".APP_NAME."!";
+                $res = $mysqli->sendEmailNotifocation($subject, $body,'', CONTACT_EMAIL, APP_FULL_NAME , $row['email'], $row['name'],DEVELOPER_EMAIL);  
+                $response['res'] = $res;
+                $response['msg_code'] = "007";
+                $response['msg'] = "Password sent to registered email address successfully.";
+            }
+            else
+            {
+                $response['msg_code'] = "05";
+                $response['msg'] = "Unable to submit your request at this time.";
+                $response['data'] = "Failed";
+            }
+       }else{
+            $response['msg_code'] = "03";
+            $response['msg'] = "Please Contact administrator to activate account.";
+        }
+	}
+	else
+	{
+		$response['msg_code'] = "03";
+		$response['msg'] = "Email Not Found";
+	}
+	echo json_encode($response);
+}
+else
+{
+	echo "Invalid option";
+}
+exit;
+?>
