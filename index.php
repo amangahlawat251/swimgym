@@ -1,4 +1,4 @@
-<?php    
+<?php 
 require_once('backend/includes/constant.php');
 require_once('backend/includes/autoload.php');
 $mysqli = new MySqliDriver();
