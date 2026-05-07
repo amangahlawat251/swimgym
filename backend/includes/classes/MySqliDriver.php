@@ -763,8 +763,9 @@ function option($name)
         echo $body = "Error:\n" . $strerror;
         $fromName = $appname;
         $attachmentPath = '';
-		//$this->sendEmailNotifocation($toEmail, $subject, $body, $attachmentPath = '', $fromEmail = '', $fromName = '', $toName = '');
-		$this->sendEmailNotifocation($subject, $body, '', EXCEPTION_EMAIL, APP_FULL_NAME , DEVELOPER_EMAIL, 'Chandan Singh','');
+		if (method_exists($this, 'sendEmails')) {
+			$this->sendEmails($subject, $body, '', EXCEPTION_EMAIL, APP_FULL_NAME, DEVELOPER_EMAIL, 'Chandan Singh','');
+		}
         exit();
     }
 	
@@ -1653,31 +1654,273 @@ function generate_family_id()
 }
   function create_pdf($content,$filepath,$papersize)
 {
-$dompdf = new Dompdf();
-$dompdf->loadHtml($content);
-if ($paper_size == 'A5') {
-        $dompdf->setPaper('A5', 'portrait');
-    } else {
-        $dompdf->setPaper('A4', 'portrait');
-    }
-$dompdf->set_option( 'defaultFont' , 'Courier' );
-$dompdf->set_option( 'isRemoteEnabled' , TRUE );
-$dompdf->set_option( 'debugKeepTemp' , TRUE );
-$dompdf->set_option( 'isHtml5ParserEnabled' , true );
-$dompdf->set_option('DOMPDF_UNICODE_ENABLED', 'true');
-$dompdf->render();
-//$dompdf->stream(); exit;
-$output = $dompdf->output();
-file_put_contents($filepath , $output);
-if(file_exists($filepath))
-{
-return 1;
-}
-else
-{
-return 0;
+try {
+	$dompdf = new Dompdf();
+	$dompdf->loadHtml($content);
+	if ($papersize == 'A5') {
+			$dompdf->setPaper('A5', 'portrait');
+		} else {
+			$dompdf->setPaper('A4', 'portrait');
+		}
+	$dompdf->set_option( 'defaultFont' , 'DejaVu Sans' );
+	$dompdf->set_option( 'isRemoteEnabled' , TRUE );
+	$dompdf->set_option( 'debugKeepTemp' , FALSE );
+	$dompdf->set_option( 'isHtml5ParserEnabled' , true );
+	$dompdf->set_option('DOMPDF_UNICODE_ENABLED', 'true');
+	$dompdf->render();
+	//$dompdf->stream(); exit;
+	$output = $dompdf->output();
+	file_put_contents($filepath , $output);
+	if(file_exists($filepath))
+	{
+	return 1;
+	}
+	else
+	{
+	return 0;
+	}
+} catch (\Exception $e) {
+	return 0;
 }
 } 
+
+function invoiceSafeText($value)
+{
+	return htmlspecialchars((string)$value, ENT_QUOTES, 'UTF-8');
+}
+
+function saveCompressedProfileImage($base64_image, $upload_dir)
+{
+	if (trim($base64_image) == '') {
+		return '';
+	}
+	if (!is_dir($upload_dir)) {
+		@mkdir($upload_dir, 0775, true);
+	}
+	$image_parts = explode(";base64,", $base64_image);
+	if (count($image_parts) < 2) {
+		return '';
+	}
+	$image_data = base64_decode($image_parts[1]);
+	if ($image_data === false) {
+		return '';
+	}
+	$file_name = uniqid().'.jpg';
+	$file_path = rtrim($upload_dir, '/\\').'/'.$file_name;
+	if (!function_exists('imagecreatefromstring')) {
+		file_put_contents($file_path, $image_data);
+		return file_exists($file_path) ? $file_name : '';
+	}
+	$source = @imagecreatefromstring($image_data);
+	if (!$source) {
+		file_put_contents($file_path, $image_data);
+		return file_exists($file_path) ? $file_name : '';
+	}
+	$width = imagesx($source);
+	$height = imagesy($source);
+	$max_size = 900;
+	$ratio = min($max_size / max($width, 1), $max_size / max($height, 1), 1);
+	$new_width = (int)max(1, round($width * $ratio));
+	$new_height = (int)max(1, round($height * $ratio));
+	$target = imagecreatetruecolor($new_width, $new_height);
+	$white = imagecolorallocate($target, 255, 255, 255);
+	imagefilledrectangle($target, 0, 0, $new_width, $new_height, $white);
+	imagecopyresampled($target, $source, 0, 0, 0, 0, $new_width, $new_height, $width, $height);
+	imagejpeg($target, $file_path, 88);
+	imagedestroy($source);
+	imagedestroy($target);
+	return file_exists($file_path) ? $file_name : '';
+}
+
+function invoiceLogoDataUri()
+{
+	$logo_path = ABSOLUTE_ROOT_PATH.'images/logos/logo.png';
+	if (!is_file($logo_path)) {
+		$logo_path = ABSOLUTE_ROOT_PATH.'images/logos/logo.jpg';
+	}
+	if (!is_file($logo_path)) {
+		return LOGO_PATH;
+	}
+	$type = strtolower(pathinfo($logo_path, PATHINFO_EXTENSION));
+	$mime = ($type == 'jpg' || $type == 'jpeg') ? 'image/jpeg' : 'image/png';
+	return 'data:'.$mime.';base64,'.base64_encode(file_get_contents($logo_path));
+}
+
+function deleteInvoiceFile($file_name)
+{
+	$file_name = basename(trim($file_name));
+	if ($file_name == '' || !preg_match('/^Invoice_[0-9]+\.pdf$/', $file_name)) {
+		return false;
+	}
+	$base_path = realpath(ABSOLUTE_ROOT_INV);
+	$file_path = ABSOLUTE_ROOT_INV.$file_name;
+	$real_path = realpath($file_path);
+	if ($base_path === false || $real_path === false || strpos($real_path, $base_path) !== 0) {
+		return false;
+	}
+	if (is_file($real_path)) {
+		return @unlink($real_path);
+	}
+	return false;
+}
+
+function invoiceHtml($id,$type = '', $with_logo = true)
+{
+    $sql = "SELECT * FROM " . MEMBERS . " where id ='".$this->escape($id)."'";
+    $result = $this->executeQry($sql);
+    $rows = $this->fetch_assoc($result);
+	if (empty($rows)) {
+		return '';
+	}
+    $plan_details = $this->singleRowAssoc_new('*', PLANS, 'id = "'.$this->escape($rows['plan_id']).'"');
+    $sql123 = "SELECT COUNT(id) AS count_rows FROM ".MEMBERS." WHERE member_id = '".$this->escape($rows['member_id'])."'";
+    $result123 = $this->executeQry($sql123);
+    $num_arr = $this->fetch_array($result123);
+	if($type == 'Single' || (isset($rows['membership_type']) && $rows['membership_type'] == 'Single')){
+		$num = isset($num_arr['count_rows']) ? $num_arr['count_rows'] : 1;
+	}else{
+		$num = 'Family Group';
+	}
+	$plan_title = isset($plan_details['title']) ? $plan_details['title'] : '';
+	$plan_price = isset($plan_details['price']) ? $plan_details['price'] : '';
+	$paid = isset($rows['discounted_price']) ? $rows['discounted_price'] : 0;
+	$invoice_no = 'SGA-'.str_replace(array(' ', '/'), '-', $rows['member_id']).'-'.date('YmdHis');
+	$generated_on = date('d M Y, h:i A');
+	$period = $rows['start_date'].' to '.$rows['end_date'];
+	$logo = $with_logo ? $this->invoiceLogoDataUri() : '';
+	$logo_html = ($logo != '') ? '<img src="'.$logo.'" class="logo" />' : '<div class="logo-text">SGA</div>';
+
+    return '<!doctype html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Invoice '.$this->invoiceSafeText($invoice_no).'</title>
+<style type="text/css">
+	* { box-sizing: border-box; }
+	@page { margin: 18px; }
+	body { margin: 0; padding: 0; font-family: DejaVu Sans, Arial, sans-serif; color: #202833; background: #ffffff; font-size: 10.5px; }
+	.invoice { border: 1px solid #d8e0ea; page-break-inside: avoid; }
+	.header { background: #4b5563; color: #ffffff; padding: 14px 18px; }
+	.brand-table, .section-table, .items { width: 100%; border-collapse: collapse; }
+	.logo { width: 54px; height: 42px; object-fit: contain; }
+	.logo-text { width: 54px; height: 42px; border: 1px solid #ffffff; text-align: center; line-height: 42px; font-size: 17px; font-weight: bold; }
+	.company { font-size: 18px; font-weight: bold; letter-spacing: .3px; margin: 0; }
+	.subtle { color: #6f7d8c; }
+	.header .subtle { color: #edf0f4; }
+	.invoice-title { text-align: right; font-size: 23px; font-weight: bold; }
+	.invoice-meta { text-align: right; line-height: 1.45; font-size: 9px; }
+	.content { padding: 16px 18px; }
+	.label { color: #6f7d8c; font-size: 8.5px; text-transform: uppercase; letter-spacing: .4px; margin-bottom: 4px; }
+	.value { font-size: 10.5px; line-height: 1.45; }
+	.box { border: 1px solid #d8e0ea; padding: 10px; background: #fbfcfe; min-height: 82px; }
+	.items { margin-top: 14px; }
+	.items th { background: #edf3f8; color: #24364a; text-align: left; padding: 7px; border-bottom: 1px solid #d8e0ea; font-size: 9.5px; }
+	.items td { padding: 8px 7px; border-bottom: 1px solid #edf0f4; vertical-align: top; }
+	.items tfoot td { padding: 7px; font-weight: bold; border-bottom: 0; }
+	.text-right { text-align: right; }
+	.grand-label, .grand-value { background: #4b5563; color: #ffffff; font-size: 12px; }
+	.note { margin-top: 12px; padding: 9px; background: #fff8e6; border: 1px solid #f0d88a; line-height: 1.45; clear: both; }
+	.footer { margin-top: 10px; color: #6f7d8c; font-size: 9.5px; line-height: 1.45; clear: both; }
+</style>
+</head>
+<body>
+<div class="invoice">
+	<div class="header">
+		<table class="brand-table">
+			<tr>
+				<td width="70%">
+					<table>
+						<tr>
+							<td>'.$logo_html.'</td>
+							<td style="padding-left:12px;">
+								<p class="company">Swim Gym Academy</p>
+								<div class="subtle">Rohtak | Professional Swimming Academy</div>
+							</td>
+						</tr>
+					</table>
+				</td>
+				<td width="30%">
+					<div class="invoice-title">INVOICE</div>
+					<div class="invoice-meta">
+						Invoice No: '.$this->invoiceSafeText($invoice_no).'<br/>
+						Date: '.$this->invoiceSafeText($generated_on).'
+					</div>
+				</td>
+			</tr>
+		</table>
+	</div>
+	<div class="content">
+		<table class="section-table">
+			<tr>
+				<td width="50%" style="padding-right:10px;">
+					<div class="box">
+						<div class="label">Billed To</div>
+						<div class="value">
+							<strong>'.$this->invoiceSafeText($rows['name']).'</strong><br/>
+							Mobile: '.$this->invoiceSafeText($rows['mobile']).'<br/>
+							Email: '.$this->invoiceSafeText($rows['email']).'<br/>
+							Membership ID: '.$this->invoiceSafeText($rows['member_id']).'
+						</div>
+					</div>
+				</td>
+				<td width="50%" style="padding-left:10px;">
+					<div class="box">
+						<div class="label">Membership Details</div>
+						<div class="value">
+							Plan: <strong>'.$this->invoiceSafeText($plan_title).'</strong><br/>
+							Period: '.$this->invoiceSafeText($period).'<br/>
+							Timing: '.$this->invoiceSafeText(isset($rows['timing']) ? $rows['timing'] : '').'<br/>
+							Members: '.$this->invoiceSafeText($num).'
+						</div>
+					</div>
+				</td>
+			</tr>
+		</table>
+		<table class="items">
+			<thead>
+				<tr>
+					<th width="8%">#</th>
+					<th width="32%">Description</th>
+					<th width="22%">Duration</th>
+					<th width="16%" class="text-right">Base Price</th>
+					<th width="22%" class="text-right">Amount Paid</th>
+				</tr>
+			</thead>
+			<tbody>
+				<tr>
+					<td>1</td>
+					<td>'.$this->invoiceSafeText($plan_title).'</td>
+					<td>'.$this->invoiceSafeText($period).'</td>
+					<td class="text-right">Rs. '.$this->invoiceSafeText($plan_price).'</td>
+					<td class="text-right">Rs. '.$this->invoiceSafeText($paid).'</td>
+				</tr>
+			</tbody>
+			<tfoot>
+				<tr>
+					<td colspan="3"></td>
+					<td class="text-right">Subtotal</td>
+					<td class="text-right">Rs. '.$this->invoiceSafeText($paid).'</td>
+				</tr>
+				<tr>
+					<td colspan="3"></td>
+					<td class="grand-label text-right">Total Paid</td>
+					<td class="grand-value text-right">Rs. '.$this->invoiceSafeText($paid).'</td>
+				</tr>
+			</tfoot>
+		</table>
+		<div class="note">
+			<strong>Note:</strong> Fees once paid are non-returnable, non-transferable, and non-refundable under any circumstances.
+		</div>
+		<div class="footer">
+			This is a computer-generated invoice from Swim Gym Academy. Generated on '.$this->invoiceSafeText($generated_on).'.<br/>
+			Thank you for choosing Swim Gym Academy.
+		</div>
+	</div>
+</div>
+</body>
+</html>';
+}
+
 function generate_membership_id()
 {
     $generate_num = '';
@@ -1901,126 +2144,18 @@ function verify_otp($otp)
 	return $otp_verify;
 }
 function generateInvoice($id,$type) {
-    // Initialize file name and HTML content variables
-    $file_name = ''; 
-    $html_content = '';
-
-    $sql = "SELECT * FROM " . MEMBERS . " where id ='".$id."'";
-    $result = $this->executeQry($sql);
-    $rows = $this->fetch_assoc($result);
-       
-    // Fetch plan details
-    $plan_details = $this->singleRowAssoc_new('*', PLANS, 'id = "'.$rows['plan_id'].'"');
-    
-    // Fetch member count
-    $sql123 = "SELECT COUNT(id) AS count_rows FROM ".MEMBERS." WHERE member_id = '".$rows['member_id']."'";
-    $result123 = $this->executeQry($sql123);
-    $num_arr = $this->fetch_array($result123);
-	if($type == 'Single'){
-    $num = $num_arr['count_rows'];
-    }else{
-	$num = 'Family Group';	
-	}
-    // Generate file name for the PDF
     $file_name = 'Invoice_' . date("Ymd") . rand() . ".pdf";
-
-    // HTML content for the invoice
-    $html_content = '<!doctype html>
-    <html lang="en">
-    <head>
-    <meta charset="UTF-8">
-    <title>' . $file_name . '</title>
-    <style type="text/css">
-        * {
-            font-family: Verdana, Arial, sans-serif;
-        }
-        table {
-            font-size: x-small;
-        }
-        tfoot tr td {
-            font-weight: bold;
-            font-size: x-small;
-        }
-        .gray {
-            background-color: lightgray
-        }
-    </style>
-    </head>
-    <body>
-        <table width="100%">
-            <tr>
-                <td align="left">
-                    <img src="' . APPLICATION_URL . 'backend/images/logos/logo.png" class="logo-abbr center" width="70" height="52" />
-                    <h3>Swim Gym Academy Rohtak</h3>
-                </td>
-            </tr>
-        </table>
-        <table width="100%">
-            <tr>
-                <td><strong>Billed To:</strong> ' . $rows['name'] . '</td>
-            </tr>
-            <tr>
-                <td><strong>Phone No :</strong> ' . $rows['mobile'] . '</td>
-            </tr>
-            <tr>
-                <td><strong>Email :</strong> ' . $rows['email'] . '</td>
-            </tr>
-            <tr>
-                <td><strong>Membership ID:</strong> ' . $rows['member_id'] . '</td>
-            </tr>
-        </table>
-        <br/>
-        <table width="100%">
-            <thead style="background-color: lightgray;">
-                <tr>
-                    <th>#</th>
-                    <th>Plan</th>
-                    <th>Base Price</th>
-                    <th>Duration</th>
-                    <th>Members(s)</th>
-                    <th>Paid</th>
-                </tr>
-            </thead>
-            <tbody>
-                <tr>
-                    <th scope="row">1</th>
-                    <td>' . $plan_details['title'] . '</td>
-                    <td align="right">' . $plan_details['price'] . '</td>
-                    <td align="right">' . $rows['start_date'] . ' - ' . $rows['end_date'] . '</td>
-                    <td align="right">' . $num . '</td>
-                    <td align="right">' . $rows['discounted_price'] . '</td>
-                </tr>
-            </tbody>
-            <tfoot>
-                <tr>
-                    <td colspan="4"></td>
-                    <td align="right">Subtotal</td>
-                    <td align="right">' . $rows['discounted_price'] . '</td>
-                </tr>
-                <tr>
-                    <td colspan="4"></td>
-                    <td align="right">Total</td>
-                    <td align="right" class="gray">' . $rows['discounted_price'] . '</td>
-                </tr>
-            </tfoot>
-        </table>
-        <table width="100%">
-            <tr>
-                <td>
-                    <p>This invoice is generated by Swim Gym Academy.</p>
-                    <p style="font-style: oblique;">Invoice Generated on - ' . date('d/m/Y H:i') . '</p>
-                </td>
-            </tr>
-        </table>
-    </body>
-    </html>';
-
-    // Generate PDF using the HTML content
+    $html_content = $this->invoiceHtml($id,$type);
+	if ($html_content == '') {
+		return '';
+	}
     $file_path = ABSOLUTE_ROOT_INV . $file_name;
-    $this->create_pdf($html_content, $file_path,'A5');
-    
-    // Return the file path of the generated PDF
-    return $file_name;
+    $created = $this->create_pdf($html_content, $file_path,'A4');
+	if (!$created) {
+		$html_content = $this->invoiceHtml($id,$type,false);
+		$created = $this->create_pdf($html_content, $file_path,'A4');
+	}
+    return file_exists($file_path) ? $file_name : '';
 }
 function createcookie($name,$value)
 {
@@ -2080,6 +2215,1163 @@ function deletecookie($name)
 		}
 
 		return $phoneNumber;
+	}
+
+	function whatsappTableExists($table)
+	{
+		$table = $this->escape($table);
+		$result = $this->executeQry("SHOW TABLES LIKE '".$table."'");
+		return ($result && $this->num_rows($result) > 0);
+	}
+
+	function whatsappColumnExists($table, $column)
+	{
+		$table = $this->escape($table);
+		$column = $this->escape($column);
+		$result = $this->executeQry("SHOW COLUMNS FROM `".$table."` LIKE '".$column."'");
+		return ($result && $this->num_rows($result) > 0);
+	}
+
+	function whatsappEnsureColumn($table, $column, $definition)
+	{
+		if (!$this->whatsappColumnExists($table, $column)) {
+			$this->executeQry("ALTER TABLE `".$table."` ADD `".$column."` ".$definition);
+		}
+	}
+
+	function whatsappRunMigration()
+	{
+		$this->executeQry("CREATE TABLE IF NOT EXISTS `".WHATSAPP_TEMPLATES."` (
+			`id` int(11) NOT NULL AUTO_INCREMENT,
+			`system_key` varchar(100) DEFAULT NULL,
+			`template_name` varchar(150) NOT NULL,
+			`provider_template_name` varchar(150) NOT NULL,
+			`category` enum('Utility','Marketing') NOT NULL DEFAULT 'Utility',
+			`language_code` varchar(20) NOT NULL DEFAULT 'en',
+			`header_format` varchar(30) NOT NULL DEFAULT 'NONE',
+			`header_sample_url` text NULL,
+			`body` text NOT NULL,
+			`footer_text` text NULL,
+			`placeholder_order` text NULL,
+			`status` enum('Pending','Approved','Rejected') NOT NULL DEFAULT 'Pending',
+			`provider_status` varchar(50) DEFAULT NULL,
+			`api_response` longtext NULL,
+			`created_by` varchar(100) DEFAULT NULL,
+			`created_on` datetime DEFAULT NULL,
+			`modified_on` datetime DEFAULT NULL,
+			PRIMARY KEY (`id`),
+			UNIQUE KEY `system_key` (`system_key`)
+		) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+
+		$this->executeQry("CREATE TABLE IF NOT EXISTS `".WHATSAPP_QUEUE."` (
+			`id` int(11) NOT NULL AUTO_INCREMENT,
+			`batch_key` varchar(100) DEFAULT NULL,
+			`user_id` int(11) DEFAULT NULL,
+			`member_id` varchar(100) DEFAULT NULL,
+			`mobile` varchar(30) NOT NULL,
+			`template_id` int(11) DEFAULT NULL,
+			`template_name` varchar(150) DEFAULT NULL,
+			`message_type` varchar(50) DEFAULT NULL,
+			`event_key` varchar(150) DEFAULT NULL,
+			`unique_key` varchar(190) NOT NULL,
+			`payload` longtext NULL,
+			`status` enum('Pending','Sent','Failed','Skipped') NOT NULL DEFAULT 'Pending',
+			`retry_count` int(11) NOT NULL DEFAULT 0,
+			`max_retry` int(11) NOT NULL DEFAULT 3,
+			`api_request` longtext NULL,
+			`api_response` longtext NULL,
+			`error_message` text NULL,
+			`scheduled_on` datetime DEFAULT NULL,
+			`sent_on` datetime DEFAULT NULL,
+			`created_by` varchar(100) DEFAULT NULL,
+			`created_on` datetime DEFAULT NULL,
+			`modified_on` datetime DEFAULT NULL,
+			PRIMARY KEY (`id`),
+			UNIQUE KEY `unique_key` (`unique_key`),
+			KEY `status_retry` (`status`,`retry_count`)
+		) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+
+		$this->executeQry("CREATE TABLE IF NOT EXISTS `".WHATSAPP_LOGS."` (
+			`id` int(11) NOT NULL AUTO_INCREMENT,
+			`queue_id` int(11) DEFAULT NULL,
+			`user_id` int(11) DEFAULT NULL,
+			`member_id` varchar(100) DEFAULT NULL,
+			`mobile` varchar(30) DEFAULT NULL,
+			`template_id` int(11) DEFAULT NULL,
+			`template_name` varchar(150) DEFAULT NULL,
+			`message_type` varchar(50) DEFAULT NULL,
+			`event_key` varchar(150) DEFAULT NULL,
+			`status` enum('Pending','Sent','Failed','Skipped') NOT NULL DEFAULT 'Pending',
+			`request_payload` longtext NULL,
+			`response_payload` longtext NULL,
+			`error_message` text NULL,
+			`retry_count` int(11) NOT NULL DEFAULT 0,
+			`created_on` datetime DEFAULT NULL,
+			PRIMARY KEY (`id`),
+			KEY `queue_id` (`queue_id`),
+			KEY `status` (`status`)
+		) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+
+		$this->whatsappEnsureColumn(WHATSAPP_TEMPLATES, 'created_by', "varchar(100) DEFAULT NULL");
+		$this->whatsappEnsureColumn(WHATSAPP_TEMPLATES, 'modified_on', "datetime DEFAULT NULL");
+		$this->whatsappEnsureColumn(WHATSAPP_TEMPLATES, 'header_format', "varchar(30) NOT NULL DEFAULT 'NONE'");
+		$this->whatsappEnsureColumn(WHATSAPP_TEMPLATES, 'header_sample_url', "text NULL");
+		$this->whatsappEnsureColumn(WHATSAPP_TEMPLATES, 'footer_text', "text NULL");
+		$this->whatsappEnsureColumn(WHATSAPP_QUEUE, 'retry_count', "int(11) NOT NULL DEFAULT 0");
+		$this->whatsappEnsureColumn(WHATSAPP_QUEUE, 'api_response', "longtext NULL");
+		$this->whatsappEnsureColumn(WHATSAPP_QUEUE, 'error_message', "text NULL");
+		$this->whatsappEnsureColumn(WHATSAPP_LOGS, 'response_payload', "longtext NULL");
+	}
+
+	function whatsappSeedDefaultTemplates()
+	{
+		$templates = array(
+			array('account_created', 'Account Created', 'swimgym_account_created', 'Hello {{user_name}}, your Swim Gym Academy membership is created. Membership ID: {{member_id}}. Plan: {{plan_name}}. Start: {{start_date}}. Expiry: {{expiry_date}}. Timing: {{timing}}. Thank you, {{company_name}}.', array('user_name','member_id','plan_name','start_date','expiry_date','timing','company_name')),
+			array('expiry_today', 'Expiring Today Reminder', 'swimgym_expiry_today', 'Hello {{user_name}}, your {{company_name}} membership expires today. Membership ID: {{member_id}}. Plan: {{plan_name}}. Please renew at reception to continue your swimming journey.', array('user_name','company_name','member_id','plan_name')),
+			array('diwali_greeting', 'Diwali Greeting', 'swimgym_diwali_greeting', 'Hello {{user_name}}, {{company_name}} wishes you and your family a happy Diwali.', array('user_name','company_name')),
+			array('new_year_greeting', 'New Year Greeting', 'swimgym_new_year_greeting', 'Hello {{user_name}}, {{company_name}} wishes you a happy New Year.', array('user_name','company_name')),
+			array('service_update', 'Service Information Update', 'swimgym_service_update', 'Hello {{user_name}}, important update from {{company_name}}: {{message}}', array('user_name','company_name','message'))
+		);
+		foreach ($templates as $tpl) {
+			$exists = $this->singleValue(WHATSAPP_TEMPLATES, 'id', "system_key = '".$this->escape($tpl[0])."'");
+			if ($exists == '') {
+				$sql = "INSERT INTO ".WHATSAPP_TEMPLATES." SET system_key = '".$this->escape($tpl[0])."', template_name = '".$this->escape($tpl[1])."', provider_template_name = '".$this->escape($tpl[2])."', category = 'Utility', language_code = 'en', body = '".$this->escape($tpl[3])."', placeholder_order = '".$this->escape(json_encode($tpl[4]))."', status = 'Pending', created_by = 'SYSTEM', created_on = NOW()";
+				$this->executeQry($sql);
+			}
+		}
+	}
+
+	function whatsappHasCredentials()
+	{
+		return (defined('WHATSAPP_API_MESSAGE_URL') && WHATSAPP_API_MESSAGE_URL != '' && defined('WHATSAPP_WABA_NUMBER') && WHATSAPP_WABA_NUMBER != '' && defined('WHATSAPP_API_KEY') && WHATSAPP_API_KEY != '');
+	}
+
+	function whatsappNormalizeMobile($mobile)
+	{
+		$mobile = preg_replace('/[^0-9]/', '', $mobile);
+		if (strlen($mobile) == 10 && defined('WHATSAPP_DEFAULT_COUNTRY_CODE')) {
+			$mobile = WHATSAPP_DEFAULT_COUNTRY_CODE.$mobile;
+		}
+		return $mobile;
+	}
+
+	function whatsappIsValidMobile($mobile)
+	{
+		$mobile = $this->whatsappNormalizeMobile($mobile);
+		return (preg_match('/^[1-9][0-9]{10,14}$/', $mobile) === 1);
+	}
+
+	function whatsappUtilityContentHasMarketingWords($content)
+	{
+		return (preg_match('/\b(offer|discount|promotion|promotional|campaign|sale|deal|coupon|cashback|free trial|advertisement|buy now)\b/i', $content) === 1);
+	}
+
+	function whatsappExtractPlaceholders($content)
+	{
+		preg_match_all('/\{\{([a-zA-Z0-9_]+)\}\}/', $content, $matches);
+		return array_values(array_unique($matches[1]));
+	}
+
+	function whatsappProviderBodyText($body, $placeholders)
+	{
+		$text = $body;
+		$index = 1;
+		foreach ($placeholders as $placeholder) {
+			$text = str_replace('{{'.$placeholder.'}}', '{{'.$index.'}}', $text);
+			$index++;
+		}
+		return $text;
+	}
+
+	function whatsappPlaceholderExample($placeholder)
+	{
+		$examples = array(
+			'user_name' => 'Romit',
+			'mobile' => '919999999999',
+			'member_id' => 'MEM001',
+			'expiry_date' => date('Y-m-d'),
+			'plan_name' => 'Monthly Plan',
+			'company_name' => COMPANY_NAME,
+			'message' => 'Your service information'
+		);
+		if (isset($examples[$placeholder])) {
+			return $examples[$placeholder];
+		}
+		return ucwords(str_replace('_', ' ', $placeholder));
+	}
+
+	function whatsappProviderCategory($category)
+	{
+		return ($category == 'Marketing') ? 'MARKETING' : 'UTILITY';
+	}
+
+	function whatsappIsValidProviderTemplateName($provider_template_name)
+	{
+		return (preg_match('/^[a-z]{1,15}$/', $provider_template_name) === 1);
+	}
+
+	function whatsappCreateProviderTemplate($provider_template_name, $category, $language_code, $body)
+	{
+		$result = array('success' => false, 'request' => '', 'response' => '', 'error' => '', 'http_code' => 0);
+		if (!$this->whatsappHasCredentials()) {
+			$result['error'] = 'WhatsApp API credentials are missing';
+			return $result;
+		}
+		if (!defined('WHATSAPP_API_CREATE_TEMPLATE_URL') || WHATSAPP_API_CREATE_TEMPLATE_URL == '') {
+			$result['error'] = 'WhatsApp create template API is not provided in WhatsAppAPIDocument. Create the template in dgasskyworld dashboard, then use Sync Provider Template List.';
+			return $result;
+		}
+		$placeholders = $this->whatsappExtractPlaceholders($body);
+		$examples = array();
+		foreach ($placeholders as $placeholder) {
+			$examples[] = $this->whatsappPlaceholderExample($placeholder);
+		}
+		$body_component = array(
+			'type' => 'BODY',
+			'text' => $this->whatsappProviderBodyText($body, $placeholders)
+		);
+		if (count($examples) > 0) {
+			$body_component['example'] = array('body_text' => array($examples));
+		}
+		$payload = array(
+			'name' => $provider_template_name,
+			'category' => $this->whatsappProviderCategory($category),
+			'language' => $language_code,
+			'components' => array($body_component)
+		);
+		$request_json = json_encode($payload);
+		$headers = array(
+			'wabaNumber: '.WHATSAPP_WABA_NUMBER,
+			'Key: '.WHATSAPP_API_KEY,
+			'Content-Type: application/json'
+		);
+		$ch = curl_init(WHATSAPP_API_CREATE_TEMPLATE_URL);
+		curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+		curl_setopt($ch, CURLOPT_POST, true);
+		curl_setopt($ch, CURLOPT_POSTFIELDS, $request_json);
+		curl_setopt($ch, CURLOPT_HTTPHEADER, $headers);
+		curl_setopt($ch, CURLOPT_CONNECTTIMEOUT, 15);
+		curl_setopt($ch, CURLOPT_TIMEOUT, 30);
+		$response = curl_exec($ch);
+		$http_code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+		if (curl_errno($ch)) {
+			$result['error'] = curl_error($ch);
+		}
+		curl_close($ch);
+		$result['request'] = $request_json;
+		$result['response'] = $response;
+		$result['http_code'] = $http_code;
+		$result['success'] = ($result['error'] == '' && in_array($http_code, array(200, 201, 202)));
+		$response_data = $this->whatsappDecodeProviderResponse($response);
+		if (is_array($response_data) && isset($response_data['error'])) {
+			$result['success'] = false;
+			$error = $response_data['error'];
+			if (is_array($error)) {
+				$result['error'] = isset($error['error_user_msg']) ? $error['error_user_msg'] : (isset($error['message']) ? $error['message'] : json_encode($error));
+			} else {
+				$result['error'] = (string)$error;
+			}
+		}
+		if (!$result['success'] && $result['error'] == '') {
+			$result['error'] = 'WhatsApp create template API returned HTTP '.$http_code;
+		}
+		$this->Resquest_Response_log('', 'WHATSAPP_CREATE_TEMPLATE', $response, $request_json, '', array('http_code' => $http_code, 'error' => $result['error']));
+		return $result;
+	}
+
+	function whatsappCreateTemplate($template_name, $provider_template_name, $category, $language_code, $body, $created_by = '')
+	{
+		$this->whatsappRunMigration();
+		$response = array();
+		$category = ($category == 'Marketing') ? 'Marketing' : 'Utility';
+		$provider_template_name = strtolower(trim($provider_template_name));
+		if (!$this->whatsappIsValidProviderTemplateName($provider_template_name)) {
+			$response['msg_code'] = '05';
+			$response['msg'] = 'Provider template name can only use lowercase alphabetic characters a-z, no spaces, no numbers, no special characters, maximum 15 characters. Example: welcome';
+			return $response;
+		}
+		if ($category == 'Utility' && $this->whatsappUtilityContentHasMarketingWords($body)) {
+			$response['msg_code'] = '05';
+			$response['msg'] = 'Offer, discount, promotion, or campaign messages are treated as Marketing templates and should not be created under Utility.';
+			return $response;
+		}
+		$placeholders = $this->whatsappExtractPlaceholders($body);
+		$provider_response = $this->whatsappCreateProviderTemplate($provider_template_name, $category, $language_code, $body);
+		if (!$provider_response['success']) {
+			$response['msg_code'] = '05';
+			$response['msg'] = $provider_response['error'];
+			return $response;
+		}
+		$api_response = $provider_response['success'] ? $provider_response['response'] : $provider_response['error'].' '.$provider_response['response'];
+		$provider_status = $provider_response['success'] ? 'SUBMITTED' : 'CREATE_FAILED';
+		$existing_id = $this->singleValue(WHATSAPP_TEMPLATES, 'id', "provider_template_name = '".$this->escape($provider_template_name)."'");
+		if ($existing_id != '') {
+			$sql = "UPDATE ".WHATSAPP_TEMPLATES." SET template_name = '".$this->escape($template_name)."', category = '".$this->escape($category)."', language_code = '".$this->escape($language_code)."', header_format = 'NONE', header_sample_url = '', body = '".$this->escape($body)."', footer_text = '', placeholder_order = '".$this->escape(json_encode($placeholders))."', status = 'Pending', provider_status = '".$this->escape($provider_status)."', api_response = '".$this->escape($api_response)."', modified_on = NOW() WHERE id = '".$existing_id."'";
+		} else {
+			$sql = "INSERT INTO ".WHATSAPP_TEMPLATES." SET template_name = '".$this->escape($template_name)."', provider_template_name = '".$this->escape($provider_template_name)."', category = '".$this->escape($category)."', language_code = '".$this->escape($language_code)."', header_format = 'NONE', header_sample_url = '', body = '".$this->escape($body)."', footer_text = '', placeholder_order = '".$this->escape(json_encode($placeholders))."', status = 'Pending', provider_status = '".$this->escape($provider_status)."', api_response = '".$this->escape($api_response)."', created_by = '".$this->escape($created_by)."', created_on = NOW(), modified_on = NOW()";
+		}
+		$this->executeQry($sql);
+		$single_sync = $this->whatsappSyncTemplateByName($provider_template_name);
+		if (!isset($single_sync['msg_code']) || $single_sync['msg_code'] != '00') {
+			$this->whatsappSyncTemplateList();
+		}
+		$response['msg_code'] = '00';
+		$response['msg'] = 'WhatsApp template submitted to provider and saved with Pending status.';
+		return $response;
+	}
+
+	function whatsappGetApprovedTemplate($provider_template_name)
+	{
+		if (!$this->whatsappTableExists(WHATSAPP_TEMPLATES)) {
+			return array();
+		}
+		$provider_template_name = trim($provider_template_name);
+		if ($provider_template_name == '') {
+			return array();
+		}
+		return $this->singleRowAssoc_new('*', WHATSAPP_TEMPLATES, "provider_template_name = '".$this->escape($provider_template_name)."' and status = 'Approved'");
+	}
+
+	function whatsappGetTemplateById($template_id, $approved_only = true)
+	{
+		if (!$this->whatsappTableExists(WHATSAPP_TEMPLATES)) {
+			return array();
+		}
+		$con = "id = '".$this->escape($template_id)."'";
+		if ($approved_only) {
+			$con .= " and status = 'Approved'";
+		}
+		return $this->singleRowAssoc_new('*', WHATSAPP_TEMPLATES, $con);
+	}
+
+	function whatsappAddLog($queue_id, $user_id, $member_id, $mobile, $template_id, $template_name, $message_type, $event_key, $status, $request_payload = '', $response_payload = '', $error_message = '', $retry_count = 0)
+	{
+		if (!$this->whatsappTableExists(WHATSAPP_LOGS)) {
+			return 0;
+		}
+		$sql = "INSERT INTO ".WHATSAPP_LOGS." SET queue_id = '".$this->escape($queue_id)."', user_id = '".$this->escape($user_id)."', member_id = '".$this->escape($member_id)."', mobile = '".$this->escape($mobile)."', template_id = '".$this->escape($template_id)."', template_name = '".$this->escape($template_name)."', message_type = '".$this->escape($message_type)."', event_key = '".$this->escape($event_key)."', status = '".$this->escape($status)."', request_payload = '".$this->escape($request_payload)."', response_payload = '".$this->escape($response_payload)."', error_message = '".$this->escape($error_message)."', retry_count = '".$this->escape($retry_count)."', created_on = NOW()";
+		$this->executeQry($sql);
+		return $this->insert_id();
+	}
+
+	function whatsappEnqueueTemplateForMember($member, $template, $params, $message_type, $event_key, $unique_suffix = '', $created_by = '')
+	{
+		$this->whatsappRunMigration();
+		$user_id = isset($member['id']) ? $member['id'] : 0;
+		$member_id = isset($member['member_id']) ? $member['member_id'] : '';
+		$mobile = isset($member['mobile']) ? $this->whatsappNormalizeMobile($member['mobile']) : '';
+		$template_id = isset($template['id']) ? $template['id'] : 0;
+		$template_name = isset($template['provider_template_name']) ? $template['provider_template_name'] : '';
+		if (!$this->whatsappIsValidMobile($mobile)) {
+			$this->whatsappAddLog(0, $user_id, $member_id, $mobile, $template_id, $template_name, $message_type, $event_key, 'Skipped', '', '', 'Mobile number empty or invalid');
+			return 0;
+		}
+		if (empty($template) || !isset($template['status']) || $template['status'] != 'Approved') {
+			$this->whatsappAddLog(0, $user_id, $member_id, $mobile, $template_id, $template_name, $message_type, $event_key, 'Skipped', '', '', 'WhatsApp template is missing or not approved');
+			return 0;
+		}
+		$unique_key = $event_key.':'.$user_id;
+		if ($unique_suffix != '') {
+			$unique_key .= ':'.$unique_suffix;
+		}
+		$exists = $this->singleValue(WHATSAPP_QUEUE, 'id', "unique_key = '".$this->escape($unique_key)."'");
+		if ($exists != '') {
+			$this->whatsappAddLog($exists, $user_id, $member_id, $mobile, $template_id, $template_name, $message_type, $event_key, 'Skipped', '', '', 'Duplicate scheduled WhatsApp message skipped');
+			return 0;
+		}
+		$payload = json_encode($params);
+		$batch_key = date('YmdHis').'_'.rand(1000,9999);
+		$sql = "INSERT INTO ".WHATSAPP_QUEUE." SET batch_key = '".$this->escape($batch_key)."', user_id = '".$this->escape($user_id)."', member_id = '".$this->escape($member_id)."', mobile = '".$this->escape($mobile)."', template_id = '".$this->escape($template_id)."', template_name = '".$this->escape($template_name)."', message_type = '".$this->escape($message_type)."', event_key = '".$this->escape($event_key)."', unique_key = '".$this->escape($unique_key)."', payload = '".$this->escape($payload)."', status = 'Pending', max_retry = '".WHATSAPP_MAX_RETRY."', scheduled_on = NOW(), created_by = '".$this->escape($created_by)."', created_on = NOW()";
+		$this->executeQry($sql);
+		$queue_id = $this->insert_id();
+		$this->whatsappAddLog($queue_id, $user_id, $member_id, $mobile, $template_id, $template_name, $message_type, $event_key, 'Pending', '', '', 'Queued for WhatsApp batch sending');
+		return $queue_id;
+	}
+
+	function whatsappEnqueueDocumentForMember($member, $document_link, $filename, $caption, $message_type, $event_key, $unique_suffix = '', $created_by = '', $template_name = '')
+	{
+		$this->whatsappRunMigration();
+		$template = $this->whatsappGetApprovedTemplate($template_name);
+		$user_id = isset($member['id']) ? $member['id'] : 0;
+		$member_id = isset($member['member_id']) ? $member['member_id'] : '';
+		$mobile = isset($member['mobile']) ? $this->whatsappNormalizeMobile($member['mobile']) : '';
+		$template_id = isset($template['id']) ? $template['id'] : 0;
+		if (!$this->whatsappIsValidMobile($mobile)) {
+			$this->whatsappAddLog(0, $user_id, $member_id, $mobile, $template_id, $template_name, $message_type, $event_key, 'Skipped', '', '', 'Mobile number empty or invalid');
+			return 0;
+		}
+		if (empty($template) || !isset($template['status']) || $template['status'] != 'Approved') {
+			$this->whatsappAddLog(0, $user_id, $member_id, $mobile, $template_id, $template_name, $message_type, $event_key, 'Skipped', '', '', 'WhatsApp invoice template is missing or not approved');
+			return 0;
+		}
+		if (trim($document_link) == '') {
+			$this->whatsappAddLog(0, $user_id, $member_id, $mobile, $template_id, $template_name, $message_type, $event_key, 'Skipped', '', '', 'Invoice PDF link is missing');
+			return 0;
+		}
+		$unique_key = $event_key.':'.$user_id;
+		if ($unique_suffix != '') {
+			$unique_key .= ':'.$unique_suffix;
+		}
+		$exists = $this->singleValue(WHATSAPP_QUEUE, 'id', "unique_key = '".$this->escape($unique_key)."'");
+		if ($exists != '') {
+			$this->whatsappAddLog($exists, $user_id, $member_id, $mobile, 0, $template_name, $message_type, $event_key, 'Skipped', '', '', 'Duplicate scheduled WhatsApp document skipped');
+			return 0;
+		}
+		$payload = json_encode(array(
+			'document_link' => $document_link,
+			'document_filename' => ($filename != '') ? $filename : 'invoice.pdf',
+			'caption' => $caption,
+			'template_params' => $this->whatsappMemberParams($member, isset($member['plan_details']) ? $member['plan_details'] : array())
+		));
+		$batch_key = date('YmdHis').'_'.rand(1000,9999);
+		$sql = "INSERT INTO ".WHATSAPP_QUEUE." SET batch_key = '".$this->escape($batch_key)."', user_id = '".$this->escape($user_id)."', member_id = '".$this->escape($member_id)."', mobile = '".$this->escape($mobile)."', template_id = '".$this->escape($template_id)."', template_name = '".$this->escape($template_name)."', message_type = '".$this->escape($message_type)."', event_key = '".$this->escape($event_key)."', unique_key = '".$this->escape($unique_key)."', payload = '".$this->escape($payload)."', status = 'Pending', max_retry = '".WHATSAPP_MAX_RETRY."', scheduled_on = NOW(), created_by = '".$this->escape($created_by)."', created_on = NOW()";
+		$this->executeQry($sql);
+		$queue_id = $this->insert_id();
+		$this->whatsappAddLog($queue_id, $user_id, $member_id, $mobile, $template_id, $template_name, $message_type, $event_key, 'Pending', '', '', 'Queued invoice PDF for WhatsApp template sending');
+		return $queue_id;
+	}
+
+	function whatsappBuildParams($template, $params)
+	{
+		$order = array();
+		if (isset($template['placeholder_order']) && $this->isJson($template['placeholder_order'])) {
+			$order = json_decode($template['placeholder_order'], true);
+		}
+		if (!is_array($order) || count($order) == 0) {
+			$order = $this->whatsappExtractPlaceholders(isset($template['body']) ? $template['body'] : '');
+		}
+		$default_order = $this->whatsappTemplateDefaultOrder($template, count($order));
+		$parameters = array();
+		foreach ($order as $index => $placeholder) {
+			if (is_numeric($placeholder) && isset($default_order[$index])) {
+				$placeholder = $default_order[$index];
+			}
+			$value = isset($params[$placeholder]) ? $params[$placeholder] : '';
+			$parameters[] = array('type' => 'text', 'text' => (string)$value);
+		}
+		return $parameters;
+	}
+
+	function whatsappTemplateDefaultOrder($template, $placeholder_count = 0)
+	{
+		$name = isset($template['provider_template_name']) ? strtolower($template['provider_template_name']) : '';
+		if ($name == (defined('WHATSAPP_TEMPLATE_ACCOUNT_CREATED') ? WHATSAPP_TEMPLATE_ACCOUNT_CREATED : '')) {
+			if ($placeholder_count == 6) {
+				return array('user_name','member_id','plan_name','start_date','expiry_date','timing');
+			}
+			if ($placeholder_count == 7) {
+				return array('company_name','user_name','member_id','plan_name','start_date','expiry_date','timing');
+			}
+			return array('user_name','company_name','plan_name','expiry_date');
+		}
+		if ($name == (defined('WHATSAPP_TEMPLATE_RENEWED') ? WHATSAPP_TEMPLATE_RENEWED : '')) {
+			if ($placeholder_count == 4) {
+				return array('user_name','member_id','plan_name','expiry_date');
+			}
+			return array('user_name','company_name','member_id','plan_name','expiry_date');
+		}
+		if ($name == (defined('WHATSAPP_TEMPLATE_FREEZE') ? WHATSAPP_TEMPLATE_FREEZE : '')) {
+			if ($placeholder_count == 5) {
+				return array('user_name','member_id','freeze_days','freeze_till','new_expiry_date');
+			}
+			return array('user_name','company_name','member_id','freeze_days','freeze_till','new_expiry_date');
+		}
+		if ($name == (defined('WHATSAPP_TEMPLATE_EXPIRY_TODAY') ? WHATSAPP_TEMPLATE_EXPIRY_TODAY : '')) {
+			if ($placeholder_count == 4) {
+				return array('user_name','member_id','plan_name','expiry_date');
+			}
+			return array('user_name','company_name','member_id','plan_name','expiry_date');
+		}
+		if ($name == (defined('WHATSAPP_TEMPLATE_DIWALI') ? WHATSAPP_TEMPLATE_DIWALI : '') || $name == (defined('WHATSAPP_TEMPLATE_NEW_YEAR') ? WHATSAPP_TEMPLATE_NEW_YEAR : '')) {
+			if ($placeholder_count == 1) {
+				return array('user_name');
+			}
+			return array('user_name','company_name');
+		}
+		return array();
+	}
+
+	function whatsappBuildTemplateRequest($mobile, $template, $params)
+	{
+		$components = array();
+		$parameters = $this->whatsappBuildParams($template, $params);
+		if (count($parameters) > 0) {
+			$components[] = array('type' => 'body', 'parameters' => $parameters);
+		}
+		return array(
+			'to' => $mobile,
+			'type' => 'template',
+			'template' => array(
+				'language' => array('policy' => 'deterministic', 'code' => isset($template['language_code']) ? $template['language_code'] : 'en'),
+				'name' => $template['provider_template_name'],
+				'components' => $components
+			)
+		);
+	}
+
+	function whatsappBuildDocumentRequest($mobile, $document_link, $filename, $caption)
+	{
+		return array(
+			'messaging_product' => 'whatsapp',
+			'to' => $mobile,
+			'type' => 'document',
+			'document' => array(
+				'caption' => $caption,
+				'link' => $document_link,
+				'filename' => $filename
+			)
+		);
+	}
+
+	function whatsappSendDocumentMessage($mobile, $document_link, $filename, $caption)
+	{
+		$result = array('success' => false, 'request' => '', 'response' => '', 'error' => '', 'http_code' => 0);
+		if (!$this->whatsappHasCredentials()) {
+			$result['error'] = 'WhatsApp API credentials are missing';
+			return $result;
+		}
+		$request_payload = $this->whatsappBuildDocumentRequest($mobile, $document_link, $filename, $caption);
+		$request_json = json_encode($request_payload);
+		$headers = array(
+			'wabaNumber: '.WHATSAPP_WABA_NUMBER,
+			'Key: '.WHATSAPP_API_KEY,
+			'Content-Type: application/json'
+		);
+		$ch = curl_init(WHATSAPP_API_MESSAGE_URL);
+		curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+		curl_setopt($ch, CURLOPT_POST, true);
+		curl_setopt($ch, CURLOPT_POSTFIELDS, $request_json);
+		curl_setopt($ch, CURLOPT_HTTPHEADER, $headers);
+		curl_setopt($ch, CURLOPT_CONNECTTIMEOUT, 15);
+		curl_setopt($ch, CURLOPT_TIMEOUT, 30);
+		$response = curl_exec($ch);
+		$http_code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+		if (curl_errno($ch)) {
+			$result['error'] = curl_error($ch);
+		}
+		curl_close($ch);
+		$result['request'] = $request_json;
+		$result['response'] = $response;
+		$result['http_code'] = $http_code;
+		$result['success'] = ($result['error'] == '' && in_array($http_code, array(200, 201, 202)));
+		if (!$result['success'] && $result['error'] == '') {
+			$result['error'] = 'WhatsApp document API returned HTTP '.$http_code;
+		}
+		return $result;
+	}
+
+	function whatsappSendTemplateMessage($mobile, $template, $params)
+	{
+		$result = array('success' => false, 'request' => '', 'response' => '', 'error' => '', 'http_code' => 0);
+		if (!$this->whatsappHasCredentials()) {
+			$result['error'] = 'WhatsApp API credentials are missing';
+			return $result;
+		}
+		$request_payload = $this->whatsappBuildTemplateRequest($mobile, $template, $params);
+		$request_json = json_encode($request_payload);
+		$headers = array(
+			'wabaNumber: '.WHATSAPP_WABA_NUMBER,
+			'Key: '.WHATSAPP_API_KEY,
+			'Content-Type: application/json'
+		);
+		$ch = curl_init(WHATSAPP_API_MESSAGE_URL);
+		curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+		curl_setopt($ch, CURLOPT_POST, true);
+		curl_setopt($ch, CURLOPT_POSTFIELDS, $request_json);
+		curl_setopt($ch, CURLOPT_HTTPHEADER, $headers);
+		curl_setopt($ch, CURLOPT_CONNECTTIMEOUT, 15);
+		curl_setopt($ch, CURLOPT_TIMEOUT, 30);
+		$response = curl_exec($ch);
+		$http_code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+		if (curl_errno($ch)) {
+			$result['error'] = curl_error($ch);
+		}
+		curl_close($ch);
+		$result['request'] = $request_json;
+		$result['response'] = $response;
+		$result['http_code'] = $http_code;
+		$result['success'] = ($result['error'] == '' && in_array($http_code, array(200, 201)));
+		if (!$result['success'] && $result['error'] == '') {
+			$result['error'] = 'WhatsApp API returned HTTP '.$http_code;
+		}
+		return $result;
+	}
+
+	function whatsappGetTemplateList()
+	{
+		$result = array('success' => false, 'request' => '{}', 'response' => '', 'error' => '', 'http_code' => 0);
+		if (!$this->whatsappHasCredentials()) {
+			$result['error'] = 'WhatsApp API credentials are missing';
+			return $result;
+		}
+		if (!defined('WHATSAPP_API_TEMPLATE_LIST_URL') || WHATSAPP_API_TEMPLATE_LIST_URL == '') {
+			$result['error'] = 'WhatsApp template list URL is missing';
+			return $result;
+		}
+		$headers = array(
+			'wabaNumber: '.WHATSAPP_WABA_NUMBER,
+			'Key: '.WHATSAPP_API_KEY,
+			'Content-Type: application/json'
+		);
+		foreach (array('{}', '') as $body) {
+			$ch = curl_init(WHATSAPP_API_TEMPLATE_LIST_URL);
+			curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+			curl_setopt($ch, CURLOPT_POST, true);
+			curl_setopt($ch, CURLOPT_POSTFIELDS, $body);
+			curl_setopt($ch, CURLOPT_HTTPHEADER, $headers);
+			curl_setopt($ch, CURLOPT_CONNECTTIMEOUT, 15);
+			curl_setopt($ch, CURLOPT_TIMEOUT, 30);
+			$response = curl_exec($ch);
+			$http_code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+			$error = '';
+			if (curl_errno($ch)) {
+				$error = curl_error($ch);
+			}
+			curl_close($ch);
+			$result['request'] = $body;
+			$result['response'] = $response;
+			$result['http_code'] = $http_code;
+			$result['error'] = $error;
+			$result['success'] = ($error == '' && in_array($http_code, array(200, 201)));
+			if ($result['success']) {
+				break;
+			}
+		}
+		if (!$result['success'] && $result['error'] == '') {
+			$result['error'] = 'WhatsApp template list API returned HTTP '.$result['http_code'];
+		}
+		return $result;
+	}
+
+	function whatsappGetWalletBalance()
+	{
+		$result = array('success' => false, 'balance' => '', 'request' => '', 'response' => '', 'error' => '', 'http_code' => 0);
+		if (!defined('WHATSAPP_API_KEY') || WHATSAPP_API_KEY == '') {
+			$result['error'] = 'WhatsApp API key is missing';
+			return $result;
+		}
+		if (!defined('WHATSAPP_API_WALLET_URL') || WHATSAPP_API_WALLET_URL == '') {
+			$result['error'] = 'WhatsApp wallet URL is missing';
+			return $result;
+		}
+		$result['request'] = 'GET '.WHATSAPP_API_WALLET_URL;
+		$headers = array(
+			'Key: '.WHATSAPP_API_KEY
+		);
+		$ch = curl_init(WHATSAPP_API_WALLET_URL);
+		curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+		curl_setopt($ch, CURLOPT_HTTPGET, true);
+		curl_setopt($ch, CURLOPT_HTTPHEADER, $headers);
+		curl_setopt($ch, CURLOPT_CONNECTTIMEOUT, 15);
+		curl_setopt($ch, CURLOPT_TIMEOUT, 30);
+		$response = curl_exec($ch);
+		$http_code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+		if (curl_errno($ch)) {
+			$result['error'] = curl_error($ch);
+		}
+		curl_close($ch);
+		$result['response'] = $response;
+		$result['http_code'] = $http_code;
+		$result['success'] = ($result['error'] == '' && in_array($http_code, array(200, 201, 202)));
+		if ($result['success'] && $this->isJson($response)) {
+			$data = json_decode($response, true);
+			if (isset($data['balance'])) {
+				$result['balance'] = $data['balance'];
+			}
+		}
+		if (!$result['success'] && $result['error'] == '') {
+			$result['error'] = 'WhatsApp wallet API returned HTTP '.$http_code;
+		}
+		return $result;
+	}
+
+	function whatsappGetProviderTemplate($provider_template_name)
+	{
+		$result = array('success' => false, 'request' => '', 'response' => '', 'error' => '', 'http_code' => 0);
+		if (!$this->whatsappHasCredentials()) {
+			$result['error'] = 'WhatsApp API credentials are missing';
+			return $result;
+		}
+		if (!defined('WHATSAPP_API_TEMPLATE_GET_URL') || WHATSAPP_API_TEMPLATE_GET_URL == '') {
+			$result['error'] = 'WhatsApp get template URL is missing';
+			return $result;
+		}
+		$template_name = trim($provider_template_name);
+		if ($template_name == '') {
+			$result['error'] = 'Provider template name is required';
+			return $result;
+		}
+		$url = rtrim(WHATSAPP_API_TEMPLATE_GET_URL, '/').'/'.rawurlencode($template_name);
+		$result['request'] = 'GET '.$url;
+		$headers = array(
+			'wabaNumber: '.WHATSAPP_WABA_NUMBER,
+			'Key: '.WHATSAPP_API_KEY
+		);
+		$ch = curl_init($url);
+		curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+		curl_setopt($ch, CURLOPT_HTTPGET, true);
+		curl_setopt($ch, CURLOPT_HTTPHEADER, $headers);
+		curl_setopt($ch, CURLOPT_CONNECTTIMEOUT, 15);
+		curl_setopt($ch, CURLOPT_TIMEOUT, 30);
+		$response = curl_exec($ch);
+		$http_code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+		if (curl_errno($ch)) {
+			$result['error'] = curl_error($ch);
+		}
+		curl_close($ch);
+		$result['response'] = $response;
+		$result['http_code'] = $http_code;
+		$result['success'] = ($result['error'] == '' && in_array($http_code, array(200, 201)));
+		if (!$result['success'] && $result['error'] == '') {
+			$result['error'] = 'WhatsApp get template API returned HTTP '.$http_code;
+		}
+		$this->Resquest_Response_log('', 'WHATSAPP_TEMPLATE_GET', $response, $result['request'], '', array('http_code' => $http_code, 'error' => $result['error']));
+		return $result;
+	}
+
+	function whatsappNormalizeProviderKey($key)
+	{
+		return strtolower(preg_replace('/[^a-z0-9]/i', '', $key));
+	}
+
+	function whatsappProviderValue($data, $keys)
+	{
+		if (!is_array($data)) {
+			return '';
+		}
+		$wanted = array();
+		foreach ($keys as $key) {
+			$wanted[] = $this->whatsappNormalizeProviderKey($key);
+		}
+		foreach ($data as $key => $value) {
+			if (!is_array($value) && in_array($this->whatsappNormalizeProviderKey($key), $wanted)) {
+				return trim((string)$value);
+			}
+		}
+		return '';
+	}
+
+	function whatsappDecodeProviderResponse($response)
+	{
+		$data = json_decode($response, true);
+		if (is_array($data)) {
+			return $data;
+		}
+		$data = json_decode(stripslashes(trim($response, "\"' \r\n\t")), true);
+		if (is_array($data)) {
+			return $data;
+		}
+		return array();
+	}
+
+	function whatsappFlattenProviderTemplates($data, &$templates)
+	{
+		if (is_string($data) && $this->isJson($data)) {
+			$data = json_decode($data, true);
+		}
+		if (!is_array($data)) {
+			return;
+		}
+		$name = $this->whatsappProviderValue($data, array('name', 'templateName', 'template_name', 'elementName', 'provider_template_name', 'template'));
+		$status = $this->whatsappProviderValue($data, array('status', 'templateStatus', 'template_status', 'approval_status', 'approvalStatus', 'state'));
+		if ($name != '' && $status != '') {
+			$templates[] = array('name' => $name, 'status' => $status, 'raw' => $data);
+		}
+		foreach ($data as $value) {
+			if (is_array($value)) {
+				$this->whatsappFlattenProviderTemplates($value, $templates);
+			}
+		}
+	}
+
+	function whatsappMapProviderTemplateStatus($status)
+	{
+		$status = strtoupper(trim($status));
+		if ($status == 'APPROVED') {
+			return 'Approved';
+		}
+		if ($status == 'REJECTED') {
+			return 'Rejected';
+		}
+		return 'Pending';
+	}
+
+	function whatsappProviderBodyFromComponents($raw_data)
+	{
+		if (!is_array($raw_data) || !isset($raw_data['components']) || !is_array($raw_data['components'])) {
+			return '';
+		}
+		foreach ($raw_data['components'] as $component) {
+			if (!is_array($component)) {
+				continue;
+			}
+			$type = $this->whatsappProviderValue($component, array('type'));
+			if (strtoupper($type) == 'BODY') {
+				return $this->whatsappProviderValue($component, array('text', 'body', 'message', 'content'));
+			}
+		}
+		return '';
+	}
+
+	function whatsappProviderHeaderFormatFromComponents($raw_data)
+	{
+		if (!is_array($raw_data) || !isset($raw_data['components']) || !is_array($raw_data['components'])) {
+			return 'NONE';
+		}
+		foreach ($raw_data['components'] as $component) {
+			if (!is_array($component)) {
+				continue;
+			}
+			$type = $this->whatsappProviderValue($component, array('type'));
+			if (strtoupper($type) == 'HEADER') {
+				$format = strtoupper($this->whatsappProviderValue($component, array('format')));
+				return ($format != '') ? $format : 'TEXT';
+			}
+		}
+		return 'NONE';
+	}
+
+	function whatsappProviderFooterFromComponents($raw_data)
+	{
+		if (!is_array($raw_data) || !isset($raw_data['components']) || !is_array($raw_data['components'])) {
+			return '';
+		}
+		foreach ($raw_data['components'] as $component) {
+			if (!is_array($component)) {
+				continue;
+			}
+			$type = $this->whatsappProviderValue($component, array('type'));
+			if (strtoupper($type) == 'FOOTER') {
+				return $this->whatsappProviderValue($component, array('text'));
+			}
+		}
+		return '';
+	}
+
+	function whatsappApplyProviderTemplate($template, &$response)
+	{
+		$name = isset($template['name']) ? trim($template['name']) : '';
+		$provider_status = isset($template['status']) ? trim($template['status']) : '';
+		if ($name == '' || $provider_status == '') {
+			return false;
+		}
+		$status = $this->whatsappMapProviderTemplateStatus($provider_status);
+		$raw_data = isset($template['raw']) ? $template['raw'] : array();
+		$raw = $this->escape(json_encode($raw_data));
+		$name_sql = $this->escape($name);
+		$body = $this->whatsappProviderBodyFromComponents($raw_data);
+		if ($body == '') {
+			$body = $this->whatsappProviderValue($raw_data, array('body', 'templateText', 'template_text', 'text', 'message', 'templateMessage', 'template_message', 'content'));
+		}
+		$body_sql = '';
+		if ($body != '') {
+			$placeholders = $this->whatsappExtractPlaceholders($body);
+			$body_sql = ", body = '".$this->escape($body)."', placeholder_order = '".$this->escape(json_encode($placeholders))."'";
+		}
+		$header_format = $this->whatsappProviderHeaderFormatFromComponents($raw_data);
+		$footer_text = $this->whatsappProviderFooterFromComponents($raw_data);
+		$sql = "UPDATE ".WHATSAPP_TEMPLATES." SET status = '".$status."', provider_status = '".$this->escape($provider_status)."', api_response = '".$raw."', header_format = '".$this->escape($header_format)."', footer_text = '".$this->escape($footer_text)."'".$body_sql.", modified_on = NOW() WHERE provider_template_name = '".$name_sql."'";
+		$this->executeQry($sql);
+		if (mysqli_affected_rows($this->cnx) > 0) {
+			$response['updated']++;
+			return true;
+		}
+		$exists = $this->singleValue(WHATSAPP_TEMPLATES, 'id', "provider_template_name = '".$name_sql."'");
+		if ($exists == '') {
+			$template_title = ucwords(str_replace('_', ' ', $name));
+			$category = 'Utility';
+			$provider_category = $this->whatsappProviderValue($raw_data, array('category', 'templateCategory', 'template_category'));
+					if (strtoupper($provider_category) == 'MARKETING') {
+						$category = 'Marketing';
+					}
+			$language_code = $this->whatsappProviderValue($raw_data, array('language', 'languageCode', 'language_code'));
+			if ($language_code == '') {
+				$language_code = 'en';
+			}
+			$header_format = $this->whatsappProviderHeaderFormatFromComponents($raw_data);
+			$footer_text = $this->whatsappProviderFooterFromComponents($raw_data);
+			$body = $this->whatsappProviderBodyFromComponents($raw_data);
+			if ($body == '') {
+				$body = $this->whatsappProviderValue($raw_data, array('body', 'templateText', 'template_text', 'text', 'message', 'templateMessage', 'template_message', 'content'));
+			}
+			if ($body == '') {
+				$body = 'Imported from WhatsApp provider. Please update local body/placeholders if needed.';
+			}
+			$placeholders = $this->whatsappExtractPlaceholders($body);
+			$insert = "INSERT INTO ".WHATSAPP_TEMPLATES." SET template_name = '".$this->escape($template_title)."', provider_template_name = '".$name_sql."', category = '".$category."', language_code = '".$this->escape($language_code)."', header_format = '".$this->escape($header_format)."', body = '".$this->escape($body)."', footer_text = '".$this->escape($footer_text)."', placeholder_order = '".$this->escape(json_encode($placeholders))."', status = '".$status."', provider_status = '".$this->escape($provider_status)."', api_response = '".$raw."', created_by = 'PROVIDER_SYNC', created_on = NOW(), modified_on = NOW()";
+			$this->executeQry($insert);
+			$response['updated']++;
+			return true;
+		}
+		return true;
+	}
+
+	function whatsappSyncTemplateByName($provider_template_name)
+	{
+		$this->whatsappRunMigration();
+		$api = $this->whatsappGetProviderTemplate($provider_template_name);
+		$response = array('msg_code' => '05', 'msg' => 'Unable to sync WhatsApp template.', 'updated' => 0, 'api' => $api);
+		if (!$api['success']) {
+			$response['msg'] = $api['error'];
+			return $response;
+		}
+		$data = $this->whatsappDecodeProviderResponse($api['response']);
+		if (!is_array($data)) {
+			$response['msg'] = 'Template API response is not valid JSON.';
+			return $response;
+		}
+		$provider_templates = array();
+		$this->whatsappFlattenProviderTemplates($data, $provider_templates);
+		if (count($provider_templates) == 0) {
+			$status = $this->whatsappProviderValue($data, array('status', 'templateStatus', 'template_status', 'approval_status', 'approvalStatus', 'state'));
+			if ($status != '') {
+				$provider_templates[] = array('name' => $provider_template_name, 'status' => $status, 'raw' => $data);
+			}
+		}
+		if (count($provider_templates) == 0) {
+			$response['msg'] = 'Template API responded, but status was not found in the response. Raw response is saved in request/response logs under WHATSAPP_TEMPLATE_GET.';
+			return $response;
+		}
+		$applied = false;
+		foreach ($provider_templates as $template) {
+			if (strtolower($template['name']) == strtolower($provider_template_name)) {
+				$this->whatsappApplyProviderTemplate($template, $response);
+				$applied = true;
+				break;
+			}
+		}
+		if (!$applied && count($provider_templates) == 1) {
+			$provider_templates[0]['name'] = $provider_template_name;
+			$this->whatsappApplyProviderTemplate($provider_templates[0], $response);
+		}
+		$response['msg_code'] = '00';
+		$response['msg'] = 'WhatsApp template synced from provider.';
+		return $response;
+	}
+
+	function whatsappSyncTemplateList()
+	{
+		$this->whatsappRunMigration();
+		$api = $this->whatsappGetTemplateList();
+		$response = array('msg_code' => '05', 'msg' => 'Unable to sync WhatsApp templates.', 'updated' => 0, 'api' => $api);
+		if (!$api['success']) {
+			$response['msg'] = $api['error'];
+			return $response;
+		}
+		$this->Resquest_Response_log('', 'WHATSAPP_TEMPLATE_LIST', $api['response'], $api['request'], '', array('http_code' => $api['http_code'], 'error' => $api['error']));
+		$data = $this->whatsappDecodeProviderResponse($api['response']);
+		if (!is_array($data)) {
+			$response['msg'] = 'Template list API response is not valid JSON.';
+			return $response;
+		}
+		$provider_templates = array();
+		$this->whatsappFlattenProviderTemplates($data, $provider_templates);
+		if (count($provider_templates) == 0) {
+			$response['msg_code'] = '05';
+			$response['msg'] = 'Template list API responded, but no templates were found in the response. Raw response is saved in request/response logs under WHATSAPP_TEMPLATE_LIST.';
+			return $response;
+		}
+		foreach ($provider_templates as $template) {
+			$this->whatsappApplyProviderTemplate($template, $response);
+			if (isset($template['name']) && trim($template['name']) != '') {
+				$single_sync = $this->whatsappSyncTemplateByName($template['name']);
+				if (isset($single_sync['updated']) && $single_sync['updated'] > 0) {
+					$response['updated'] += $single_sync['updated'];
+				}
+			}
+		}
+		$response['msg_code'] = '00';
+		$response['msg'] = 'WhatsApp template list synced. Updated templates: '.$response['updated'];
+		return $response;
+	}
+
+	function whatsappProcessQueue($batch_size = 100)
+	{
+		$this->whatsappRunMigration();
+		$batch_size = (int)$batch_size;
+		if ($batch_size <= 0) {
+			$batch_size = WHATSAPP_BATCH_SIZE;
+		}
+		$response = array('sent' => 0, 'failed' => 0, 'skipped' => 0, 'processed' => 0);
+		$sql = "SELECT * FROM ".WHATSAPP_QUEUE." WHERE status IN ('Pending','Failed') AND retry_count < max_retry ORDER BY id ASC LIMIT ".$batch_size;
+		$result = $this->executeQry($sql);
+		while ($row = $this->fetch_assoc($result)) {
+			$response['processed']++;
+			$template = $this->whatsappGetTemplateById($row['template_id'], true);
+			$params = ($this->isJson($row['payload'])) ? json_decode($row['payload'], true) : array();
+			if (isset($params['template_params']) && is_array($params['template_params'])) {
+				$params = array_merge($params['template_params'], $params);
+				unset($params['template_params']);
+			}
+			if (!$this->whatsappIsValidMobile($row['mobile'])) {
+				$error = 'Mobile number empty or invalid';
+				$this->executeQry("UPDATE ".WHATSAPP_QUEUE." SET status = 'Skipped', error_message = '".$this->escape($error)."', modified_on = NOW() WHERE id = '".$row['id']."'");
+				$this->whatsappAddLog($row['id'], $row['user_id'], $row['member_id'], $row['mobile'], $row['template_id'], $row['template_name'], $row['message_type'], $row['event_key'], 'Skipped', '', '', $error, $row['retry_count']);
+				$response['skipped']++;
+				continue;
+			}
+			if (empty($template)) {
+				$error = 'WhatsApp template is missing or not approved';
+				$this->executeQry("UPDATE ".WHATSAPP_QUEUE." SET status = 'Skipped', error_message = '".$this->escape($error)."', modified_on = NOW() WHERE id = '".$row['id']."'");
+				$this->whatsappAddLog($row['id'], $row['user_id'], $row['member_id'], $row['mobile'], $row['template_id'], $row['template_name'], $row['message_type'], $row['event_key'], 'Skipped', '', '', $error, $row['retry_count']);
+				$response['skipped']++;
+				continue;
+			}
+			$send = $this->whatsappSendTemplateMessage($row['mobile'], $template, $params);
+			$status = $send['success'] ? 'Sent' : 'Failed';
+			$retry_count = $row['retry_count'] + 1;
+			$sent_on = $send['success'] ? ", sent_on = NOW()" : "";
+			$this->executeQry("UPDATE ".WHATSAPP_QUEUE." SET status = '".$status."', retry_count = '".$retry_count."', api_request = '".$this->escape($send['request'])."', api_response = '".$this->escape($send['response'])."', error_message = '".$this->escape($send['error'])."', modified_on = NOW() ".$sent_on." WHERE id = '".$row['id']."'");
+			$this->whatsappAddLog($row['id'], $row['user_id'], $row['member_id'], $row['mobile'], $row['template_id'], $template['provider_template_name'], $row['message_type'], $row['event_key'], $status, $send['request'], $send['response'], $send['error'], $retry_count);
+			if ($send['success']) {
+				$response['sent']++;
+			} else {
+				$response['failed']++;
+			}
+		}
+		return $response;
+	}
+
+	function whatsappMemberParams($member, $plan_details = array(), $extra = array())
+	{
+		$params = array(
+			'user_name' => isset($member['name']) ? $member['name'] : '',
+			'mobile' => isset($member['mobile']) ? $member['mobile'] : '',
+			'member_id' => isset($member['member_id']) ? $member['member_id'] : '',
+			'plan_name' => isset($plan_details['title']) ? $plan_details['title'] : '',
+			'start_date' => isset($member['start_date']) ? $member['start_date'] : (isset($member['joining_date']) ? $member['joining_date'] : ''),
+			'expiry_date' => isset($member['end_date']) ? $member['end_date'] : '',
+			'timing' => isset($member['timing']) ? $member['timing'] : '',
+			'company_name' => COMPANY_NAME
+		);
+		foreach ($extra as $key => $value) {
+			$params[$key] = $value;
+		}
+		return $params;
+	}
+
+	function whatsappInvoiceLink($member)
+	{
+		$invoice_file = isset($member['invoice']) ? trim($member['invoice']) : '';
+		if ($invoice_file == '') {
+			return '';
+		}
+		return ABSOLUTE_ROOT_INV_DOWNLOAD.$invoice_file;
+	}
+
+	function whatsappAccountCreatedCaption($member, $plan_details = array())
+	{
+		$plan_name = isset($plan_details['title']) ? $plan_details['title'] : '';
+		$caption = "Welcome to ".COMPANY_NAME.", ".(isset($member['name']) ? $member['name'] : '').".\n\n";
+		$caption .= "Your membership has been created successfully.\n\n";
+		$caption .= "Membership ID: ".(isset($member['member_id']) ? $member['member_id'] : '')."\n";
+		$caption .= "Plan Name: ".$plan_name."\n";
+		$caption .= "Start Date: ".(isset($member['start_date']) ? $member['start_date'] : '')."\n";
+		$caption .= "Expiry Date: ".(isset($member['end_date']) ? $member['end_date'] : '')."\n";
+		$caption .= "Class Timing: ".(isset($member['timing']) ? $member['timing'] : '')."\n\n";
+		$caption .= "Your invoice PDF is attached with this WhatsApp message for your records.\n\n";
+		$caption .= "Thank you for choosing ".COMPANY_NAME.".";
+		return $caption;
+	}
+
+	function whatsappQueueAccountCreated($member_id)
+	{
+		$member = $this->singleRowAssoc_new('*', MEMBERS, "id = '".$this->escape($member_id)."'");
+		if (empty($member)) {
+			return 0;
+		}
+		$plan = $this->singleRowAssoc_new('*', PLANS, "id = '".$this->escape($member['plan_id'])."'");
+		$template = $this->whatsappGetApprovedTemplate(defined('WHATSAPP_TEMPLATE_ACCOUNT_CREATED') ? WHATSAPP_TEMPLATE_ACCOUNT_CREATED : '');
+		$params = $this->whatsappMemberParams($member, $plan);
+		return $this->whatsappEnqueueTemplateForMember($member, $template, $params, 'ACCOUNT_CREATED', 'account_created', date('YmdHis'), 'SYSTEM');
+	}
+
+	function whatsappQueueMembershipRenewed($member_id)
+	{
+		$member = $this->singleRowAssoc_new('*', MEMBERS, "id = '".$this->escape($member_id)."'");
+		if (empty($member)) {
+			return 0;
+		}
+		$plan = $this->singleRowAssoc_new('*', PLANS, "id = '".$this->escape($member['plan_id'])."'");
+		$template = $this->whatsappGetApprovedTemplate(defined('WHATSAPP_TEMPLATE_RENEWED') ? WHATSAPP_TEMPLATE_RENEWED : '');
+		$params = $this->whatsappMemberParams($member, $plan);
+		return $this->whatsappEnqueueTemplateForMember($member, $template, $params, 'MEMBERSHIP_RENEWED', 'membership_renewed', date('YmdHis'), 'SYSTEM');
+	}
+
+	function whatsappQueueMembershipFreeze($member_id, $freeze_days = '', $freeze_till = '')
+	{
+		$member = $this->singleRowAssoc_new('*', MEMBERS, "id = '".$this->escape($member_id)."'");
+		if (empty($member)) {
+			return 0;
+		}
+		$plan = $this->singleRowAssoc_new('*', PLANS, "id = '".$this->escape($member['plan_id'])."'");
+		$template = $this->whatsappGetApprovedTemplate(defined('WHATSAPP_TEMPLATE_FREEZE') ? WHATSAPP_TEMPLATE_FREEZE : '');
+		$params = $this->whatsappMemberParams($member, $plan, array(
+			'freeze_days' => $freeze_days,
+			'freeze_till' => $freeze_till,
+			'new_expiry_date' => isset($member['end_date']) ? $member['end_date'] : ''
+		));
+		return $this->whatsappEnqueueTemplateForMember($member, $template, $params, 'MEMBERSHIP_FREEZE', 'membership_freeze', date('YmdHis'), 'SYSTEM');
+	}
+
+	function whatsappQueueExpiryTodayForMember($member)
+	{
+		$plan = $this->singleRowAssoc_new('*', PLANS, "id = '".$this->escape($member['plan_id'])."'");
+		$template = $this->whatsappGetApprovedTemplate(defined('WHATSAPP_TEMPLATE_EXPIRY_TODAY') ? WHATSAPP_TEMPLATE_EXPIRY_TODAY : '');
+		$params = $this->whatsappMemberParams($member, $plan);
+		return $this->whatsappEnqueueTemplateForMember($member, $template, $params, 'EXPIRY_TODAY', 'expiry_today', date('Ymd'), 'CRON');
+	}
+
+	function whatsappQueueFestivalMessages($festival_key, $year)
+	{
+		$template_key = ($festival_key == 'diwali') ? 'diwali_greeting' : 'new_year_greeting';
+		$provider_template_name = ($festival_key == 'diwali') ? (defined('WHATSAPP_TEMPLATE_DIWALI') ? WHATSAPP_TEMPLATE_DIWALI : '') : (defined('WHATSAPP_TEMPLATE_NEW_YEAR') ? WHATSAPP_TEMPLATE_NEW_YEAR : '');
+		$template = $this->whatsappGetApprovedTemplate($provider_template_name);
+		$expiry_months = ($festival_key == 'diwali') ? 2 : 4;
+		$expired_from = date('Y-m-d', strtotime('-'.$expiry_months.' months'));
+		$today = date('Y-m-d');
+		$sql = "SELECT * FROM ".MEMBERS." WHERE (status = 'Active' OR (end_date >= '".$this->escape($expired_from)."' AND end_date < '".$this->escape($today)."')) AND (membership_type = 'Single' OR (membership_type = 'Family' AND family_head = '1'))";
+		$result = $this->executeQry($sql);
+		$count = 0;
+		while ($member = $this->fetch_assoc($result)) {
+			$params = $this->whatsappMemberParams($member, array());
+			$count += ($this->whatsappEnqueueTemplateForMember($member, $template, $params, strtoupper($festival_key), $template_key, $year, 'CRON') > 0) ? 1 : 0;
+		}
+		return $count;
+	}
+
+	function whatsappQueueBulkTemplate($template_id, $audience, $selected_users = array(), $created_by = '')
+	{
+		$template = $this->whatsappGetTemplateById($template_id, true);
+		if (empty($template)) {
+			return array('msg_code' => '05', 'msg' => 'Only approved WhatsApp templates can be sent.');
+		}
+		$con = "1";
+		if ($audience == 'Active') {
+			$con .= " AND status = 'Active'";
+		} else if ($audience == 'Inactive') {
+			$con .= " AND status != 'Active'";
+		}
+		if ($audience == 'Selected') {
+			$ids = array();
+			foreach ($selected_users as $id) {
+				$ids[] = (int)$id;
+			}
+			if (count($ids) == 0) {
+				return array('msg_code' => '05', 'msg' => 'Please select at least one member.');
+			}
+			$con .= " AND id IN (".implode(',', $ids).")";
+		}
+		$con .= " AND (membership_type = 'Single' OR (membership_type = 'Family' AND family_head = '1'))";
+		$sql = "SELECT * FROM ".MEMBERS." WHERE ".$con;
+		$result = $this->executeQry($sql);
+		$count = 0;
+		$event = 'panel_template_'.$template_id.'_'.date('YmdHis');
+		while ($member = $this->fetch_assoc($result)) {
+			$params = $this->whatsappMemberParams($member, array(), array('message' => $template['body']));
+			$count += ($this->whatsappEnqueueTemplateForMember($member, $template, $params, 'PANEL', $event, '', $created_by) > 0) ? 1 : 0;
+		}
+		return array('msg_code' => '00', 'msg' => 'WhatsApp messages queued: '.$count.'. Cron will send '.WHATSAPP_BATCH_SIZE.' per batch.');
 	}
 
 	function blockUnblockUser($apiKey, $employeeCode, $employeeName, $serialNumber, $isBlock, $userName, $userPassword, $commandId) {

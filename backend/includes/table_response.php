@@ -949,6 +949,93 @@ if ($tab == 'view_enquiries')
 }
 
 
+if ($tab == 'view_whatsapp_logs')
+{
+	$mysqli->whatsappRunMigration();
+	if (!isset($page) || $page < 1) {
+		$page = 1;
+	}
+	if (!isset($disp_rec) || $disp_rec == "") {
+		$disp_rec = 10;
+		$per_page = 10;
+	}
+	if (isset($record_limit)) {
+		$disp_rec = $record_limit;
+		$per_page = $disp_rec;
+	}
+	if (isset($page)) {
+		$start = (($page - 1) * $disp_rec);
+		$cur_page = $page;
+	} else {
+		$page = 1;
+		$start = 1;
+	}
+	$sql = "select * from ".WHATSAPP_LOGS." where 1 order by id DESC limit ".$start.",".$disp_rec;
+	$result = $mysqli->executeQry($sql);
+	$result123 = $mysqli->executeQry("select count(id) as count_rows from ".WHATSAPP_LOGS." where 1");
+	$num_arr = $mysqli->fetch_array($result123);
+	$num = $num_arr['count_rows'];
+	if($num > 0)
+	{
+		$no_of_paginations = ceil($num / $per_page);
+		$previous_btn = true;
+		$next_btn = true;
+		$first_btn = true;
+		$last_btn = true;
+		$table = '
+		<div class="card-body"><div class="row">
+			<div class="col-md-3"><div class="form-group pull-left"><label class="control-label">Record Limit:<span></span></label>
+				<select name="record_limit_change" id="record_limit_change" class="form-control">
+					<option value="10">10</option><option value="20">20</option><option value="30">30</option><option value="50">50</option><option value="100">100</option><option value="200">200</option>
+				</select></div></div>
+			<div class="col-md-6"></div>
+			<div class="col-md-3"><div class="form-group pull-right"><label class="control-label">Search:<span></span></label><input type="text" id="live_search" class="form-control" /></div></div>
+		</div>
+		<input type="hidden" id="total_records" value="'.$num.'">
+		<table id="dynamic_table" class="table table-bordered table-hover table-responsive-sm">
+		<thead><tr>
+		<th><nobr>#</nobr></th>
+		<th><nobr>Status</nobr></th>
+		<th><nobr>Mobile</nobr></th>
+		<th><nobr>Member ID</nobr></th>
+		<th><nobr>Template</nobr></th>
+		<th><nobr>Type</nobr></th>
+		<th><nobr>Error</nobr></th>
+		<th><nobr>API Response</nobr></th>
+		<th><nobr>Created On</nobr></th>
+		</tr></thead><tbody id="tbody">';
+		$n = 1;
+		while($rows = $mysqli->fetch_assoc($result))
+		{
+			$i = ($start + $n);
+			$status_class = 'badge-warning';
+			if($rows['status'] == 'Sent') $status_class = 'badge-success';
+			if($rows['status'] == 'Failed') $status_class = 'badge-danger';
+			if($rows['status'] == 'Skipped') $status_class = 'badge-secondary';
+			$table .= "<tr>";
+			$table .= "<td><nobr>".$i."</nobr></td>";
+			$table .= "<td><span class='badge light ".$status_class." badge-sm'>".$rows['status']."</span></td>";
+			$table .= "<td><nobr>".$rows['mobile']."</nobr></td>";
+			$table .= "<td><nobr>".$rows['member_id']."</nobr></td>";
+			$table .= "<td><nobr>".$rows['template_name']."</nobr></td>";
+			$table .= "<td><nobr>".$rows['message_type']."</nobr></td>";
+			$table .= "<td><nobr>".htmlspecialchars(substr($rows['error_message'], 0, 180))."</nobr></td>";
+			$table .= "<td><nobr>".htmlspecialchars(substr($rows['response_payload'], 0, 220))."</nobr></td>";
+			$table .= "<td><nobr>".$mysqli->formatdate($rows['created_on'],"j-M-Y h:i:A")."</nobr></td>";
+			$table .= "</tr>";
+			$n++;
+		}
+		$table .= '</tbody></table></div>';
+		$table .= '<div style="background-color:#fff;" class="card-footer">';
+		$table .= $mysqli->custompaging_table_response($cur_page, $no_of_paginations, $previous_btn, $next_btn, $first_btn, $last_btn);
+		$table .= '</div>';
+	}
+	else
+	{
+		$table = '<div class="card-body"><div class="alert alert-danger"><strong>!!</strong> No WhatsApp log found.</div></div>';
+	}
+}
+
 
 
 echo $table ;

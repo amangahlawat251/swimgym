@@ -35,10 +35,10 @@ else if($_SERVER['HTTP_HOST'] == 'localhost' || $_SERVER['HTTP_HOST'] == 'www.lo
 	################## DB ##########################################
 	define('HOST', 'localhost');
 	define('USER', 'root');
-	define('PASS', ''); 
-	define('DATABASE', 'u504935519_examportal');
+	define('PASSWORD', ''); 
+	define('DATABASE', 'swimgym');
 	################## DB ############################################
-    define("ABSOLUTE_ROOT_PATH", $_SERVER['DOCUMENT_ROOT'].'/swimgym/');
+    define("ABSOLUTE_ROOT_PATH", $_SERVER['DOCUMENT_ROOT'].'/swimgym/backend/');
 }
 else
 {
@@ -69,12 +69,32 @@ define('REVENUE', 'tbl_revenue');
 define('ENQUIRIES', 'tbl_enquiry');
 define('HISTORY', 'tbl_membership_history');
 define('NOTIFICATIONS', 'tbl_sent_notifications');
+define('WHATSAPP_TEMPLATES', 'tbl_whatsapp_templates');
+define('WHATSAPP_QUEUE', 'tbl_whatsapp_message_queue');
+define('WHATSAPP_LOGS', 'tbl_whatsapp_logs');
 define('ATTENDANCE', 'tbl_attendance');
 define('APPLICATION_FULL_NAME',"Swim Gym Academy");
 define('LOGO_PATH',APPLICATION_URL."backend/images/logos/logo.png");
 define('DEFAULT_PROFILE_PICTURE',APPLICATION_URL."backend/images/avatar/1.png");
 define('LOGO_ALT',APPLICATION_FULL_NAME);
 define('FAVICON_PATH',APPLICATION_URL."backend/images/logos/logo.png");
+define('WHATSAPP_API_BASE_URL', 'https://cpass.dgasskyworld.com/REST/directApi');
+define('WHATSAPP_API_MESSAGE_URL', WHATSAPP_API_BASE_URL.'/message');
+define('WHATSAPP_API_TEMPLATE_LIST_URL', WHATSAPP_API_BASE_URL.'/getTemplateList');
+define('WHATSAPP_API_TEMPLATE_GET_URL', WHATSAPP_API_BASE_URL.'/getTemplate');
+define('WHATSAPP_API_CREATE_TEMPLATE_URL', WHATSAPP_API_BASE_URL.'/template/createTemplate');
+define('WHATSAPP_API_WALLET_URL', 'https://cpass.dgasskyworld.com/api/getWallet');
+define('WHATSAPP_WABA_NUMBER', '919457857777');
+define('WHATSAPP_API_KEY', '57ca264133XX');
+define('WHATSAPP_DEFAULT_COUNTRY_CODE', '91');
+define('WHATSAPP_BATCH_SIZE', 100);
+define('WHATSAPP_MAX_RETRY', 3);
+define('WHATSAPP_TEMPLATE_ACCOUNT_CREATED', 'memberadded');
+define('WHATSAPP_TEMPLATE_EXPIRY_TODAY', 'expirytoday');
+define('WHATSAPP_TEMPLATE_DIWALI', 'diwaliwish');
+define('WHATSAPP_TEMPLATE_NEW_YEAR', 'newyearwish');
+define('WHATSAPP_TEMPLATE_RENEWED', 'memberrenewednew');
+define('WHATSAPP_TEMPLATE_FREEZE', 'memberfreeze');
 use includes\PHPMailer\PHPMailer\PHPMailer;
 use includes\PHPMailer\PHPMailer\Exception;
 require 'PHPMailer/src/Exception.php';

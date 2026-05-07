@@ -29,7 +29,7 @@ if(strtoupper(php_sapi_name()) == 'CLI')
 
 	$logid = $mysqli->Resquest_Response_log("", strtoupper('expiry_mail'), '', 'mail to expired memberships', ''); 
 	$cur_date = date('Y-m-d');
-	 $sql = "SELECT * FROM ".MEMBERS." where end_date = '".$cur_date."'";
+	 $sql = "SELECT * FROM ".MEMBERS." where end_date = '".$cur_date."' and status = 'Active'";
 	$result = $mysqli->executeQry($sql);
 	while ($row = $mysqli->fetch_assoc($result)) {
 		extract($row);
@@ -68,9 +68,13 @@ if(strtoupper(php_sapi_name()) == 'CLI')
 							 $response['msg_code'] = "01";
 							 $response['msg'] = "mail not sent.";
 						 }
+						 // Queue an expiring-today WhatsApp reminder; the batch processor sends at most configured batch size.
+						 $mysqli->whatsappQueueExpiryTodayForMember($row);
 		}
 		
 	}
+
+$response['whatsapp'] = $mysqli->whatsappProcessQueue(WHATSAPP_BATCH_SIZE);
 
 $logid = $mysqli->Resquest_Response_log($logid, '', $response, '',$record_id,$log);
 }

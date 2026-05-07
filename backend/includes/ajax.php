@@ -106,14 +106,7 @@ if ($tab == 'login') {
 	$sportsperson = 0;
 	if (isset($image) && $image !='') {
 	$uploadsDir = "uploads/profile/";
-	$image_parts = explode(";base64,", $image);
-	$image_type_aux = explode("image/", $image_parts[0]);
-	$image_type = $image_type_aux[1];
-
-	$image_base64 = base64_decode($image_parts[1]);
-	$fileName = uniqid() . '.png';
-	$file = $uploadsDir . $fileName;
-	file_put_contents($file, $image_base64);
+	$fileName = $mysqli->saveCompressedProfileImage($image, $uploadsDir);
 	}else{
 		$fileName = $picture;
 	}
@@ -212,7 +205,14 @@ if ($tab == 'login') {
 						 $attachmentPath = ABSOLUTE_ROOT_INV.$file;
 						
 						 $isMail = $mysqli->sendEmails($subject, $body, $attachmentPath, $fromEmail, $fromName, $toEmail,  $toName = '', $bcc = '');
+						 if($file){
+						 	$mysqli->deleteInvoiceFile($file);
+						 	$mysqli->executeQry("UPDATE " . MEMBERS . " SET invoice = '' WHERE id = '" . $last_id."'");
+						 }
 						 
+						 // Queue the same account details for WhatsApp using the approved Utility template.
+						 $mysqli->whatsappQueueAccountCreated($last_id);
+						 $mysqli->whatsappProcessQueue(WHATSAPP_BATCH_SIZE);
 						 
 				}
 				$apiKey = "11";
@@ -268,6 +268,7 @@ if ($tab == 'login') {
 							
 							
 							
+							$renew_member_name = isset($member_details['name']) ? $member_details['name'] : '';
 							if ($member_details['membership_type'] == 'Single' || ($member_details['membership_type'] == 'Family' && $member_details['family_head'] == '1')) { 
 							
 							$sql_r = "INSERT INTO " . REVENUE . " SET member_id = '" . $member_id . "', amount_received = '" . $paid . "' , start_date = '" . $user_doj . "' , end_date = '" . $new_expiry_date . "' , received_on = '".date('Y-m-d H:i:s')."'";
@@ -280,7 +281,7 @@ if ($tab == 'login') {
 								}
 								$subject = 'Welcome to Swim Gym Academy! Your Membership Details Inside | '.$member_id.'';
 				 
-								$body = '<p>Hello '.$user_name.',</p>';
+								$body = '<p>Hello '.$renew_member_name.',</p>';
 								
 								$body .= '<p>We are thrilled to welcome you to Swim Gym Academy! We are excited to have you as a member of our community and cant wait to support you on your swimming journey.</p>';
 								
@@ -306,10 +307,16 @@ if ($tab == 'login') {
 								 $toEmail = $member_details['email'];
 								 $attachmentPath = ABSOLUTE_ROOT_INV.$file;
 								 $isMail = $mysqli->sendEmails($subject, $body, $attachmentPath, $fromEmail, $fromName, $toEmail,  $toName = '', $bcc = '');
+								 if($file){
+								 	$mysqli->deleteInvoiceFile($file);
+								 	$mysqli->executeQry("UPDATE " . MEMBERS . " SET invoice = '' WHERE id = '" . $member_details['id']."'");
+								 }
+								 $mysqli->whatsappQueueMembershipRenewed($member_details['id']);
+								 $mysqli->whatsappProcessQueue(WHATSAPP_BATCH_SIZE);
 							}
 							 $apiKey = "11";
 							$employeeCode = $member_details['id'];
-							$employeeName = $user_name;
+							$employeeName = $renew_member_name;
 							$isBlock = "false"; // or "false"
 							$serialNumber = "CUB7235301317";
 							$userName = "sgar";
@@ -362,6 +369,47 @@ else if ($tab == 'send_email') {
         $response['msg'] = "Notification sent.";
         $response['redirect'] = "index.php?" . $mysqli->encode("stat=messages");
     }
+}
+else if ($tab == 'add_whatsapp_template') {
+	$created_by = isset($_SESSION['login_id']) ? $_SESSION['login_id'] : '';
+	$response = $mysqli->whatsappCreateTemplate($template_name, $provider_template_name, $category, $language_code, $template_body, $created_by);
+	$response['redirect'] = "index.php?" . $mysqli->encode("stat=whatsapp");
+}
+else if ($tab == 'update_whatsapp_template_status') {
+	$mysqli->whatsappRunMigration();
+	$template_id = (int)$template_id;
+	$status = in_array($status, array('Pending', 'Approved', 'Rejected')) ? $status : 'Pending';
+	$provider_template_name = isset($provider_template_name) ? $provider_template_name : '';
+	$api_response = isset($api_response) ? $api_response : '';
+	$existing_template = $mysqli->singleRowAssoc_new('*', WHATSAPP_TEMPLATES, "id = '".$template_id."'");
+	if ($provider_template_name == '' && isset($existing_template['provider_template_name'])) {
+		$provider_template_name = $existing_template['provider_template_name'];
+	}
+	if ($status == 'Approved' && trim($provider_template_name) == '') {
+		$response['msg_code'] = "05";
+		$response['msg'] = "Provider template name is required before approving.";
+	} else {
+		$sql = "UPDATE ".WHATSAPP_TEMPLATES." SET status = '".$mysqli->escape($status)."', provider_template_name = '".$mysqli->escape($provider_template_name)."', api_response = '".$mysqli->escape($api_response)."', modified_on = NOW() WHERE id = '".$template_id."'";
+		$res = $mysqli->executeQry($sql);
+		if ($res > 0) {
+			$response['msg_code'] = "00";
+			$response['msg'] = "WhatsApp template status updated.";
+			$response['redirect'] = "index.php?" . $mysqli->encode("stat=whatsapp");
+		} else {
+			$response['msg_code'] = "05";
+			$response['msg'] = "Unable to update WhatsApp template status.";
+		}
+	}
+}
+else if ($tab == 'sync_whatsapp_templates') {
+	$response = $mysqli->whatsappSyncTemplateList();
+	$response['redirect'] = "index.php?" . $mysqli->encode("stat=whatsapp");
+}
+else if ($tab == 'send_whatsapp_bulk') {
+	$created_by = isset($_SESSION['login_id']) ? $_SESSION['login_id'] : '';
+	$selected_users = isset($selected_users) ? $selected_users : array();
+	$response = $mysqli->whatsappQueueBulkTemplate($template_id, $audience, $selected_users, $created_by);
+	$response['redirect'] = "index.php?" . $mysqli->encode("stat=whatsapp");
 }
 else if ($tab == 'add_plans') {
 	
@@ -441,6 +489,7 @@ else if ($tab == 'add_plans') {
 }else if ($tab == 'freeze_membership') {
 	if($freeze <= 15){
 	$end_date = $mysqli->singleRowAssoc_new('end_date', MEMBERS, 'id = "'.$edit_id.'"');
+	$requested_freeze = $freeze;
 	$freeze = $freeze - 1;
 	$plan_con = '+'.$freeze.' days';
 	$cur_date = date('Y-m-d');
@@ -450,6 +499,8 @@ else if ($tab == 'add_plans') {
 	 $sql = "UPDATE " . MEMBERS . " SET end_date = '".$new_date."', is_freezed = '1', membership_freezed_till = '".$freezed_till."', membership_freezed_on = '".$cur_date."', freezed_for_days = '".$freeze."' WHERE id = " . $edit_id;
 	$res = $mysqli->executeQry($sql);
 	if ($res > 0) {
+		$mysqli->whatsappQueueMembershipFreeze($edit_id, $requested_freeze, $freezed_till);
+		$mysqli->whatsappProcessQueue(WHATSAPP_BATCH_SIZE);
 		$response['msg_code'] = "00";
 		$response['msg'] = "Membership successfully freezed.";
 		$response['redirect'] = "index.php?".$mysqli->encode("stat=users");

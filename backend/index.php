@@ -40,6 +40,7 @@ $Encript_arr[] = $mysqli->encode('custom_ajax');
 $Encript_arr[] = $mysqli->encode('logout');
 $Encript_arr[] = $mysqli->encode('Dashboard');	
 $Encript_arr[] = $mysqli->encode('messages');		
+$Encript_arr[] = $mysqli->encode('whatsapp');		
 $Encript_arr[] = $mysqli->encode('plans');		
 $Encript_arr[] = $mysqli->encode('users');		
 $Encript_arr[] = $mysqli->encode('error_404');
@@ -83,6 +84,10 @@ if (!empty($stat)) {
 		
 		case "messages":
             include "messages.php";
+            break;
+
+		case "whatsapp":
+            include "whatsapp.php";
             break;
 		
 		case "ajax":

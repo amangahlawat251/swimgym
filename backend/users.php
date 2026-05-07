@@ -678,6 +678,10 @@ include_once("includes/dynamic_table.php") ;
 							$("#preloader").hide();
 							console.log(data);
 							if (data) {
+								if (data.indexOf('ERROR:') === 0) {
+									alert(data.replace('ERROR:', ''));
+									return;
+								}
 								var pdfUrl = data;
 								window.open(pdfUrl, '_blank');
 							} else {
