@@ -87,7 +87,7 @@ define('WHATSAPP_API_WALLET_URL', 'https://cpass.dgasskyworld.com/api/getWallet'
 define('WHATSAPP_WABA_NUMBER', '919457857777');
 define('WHATSAPP_API_KEY', '57ca264133XX');
 define('WHATSAPP_DEFAULT_COUNTRY_CODE', '91');
-define('WHATSAPP_BATCH_SIZE', 100);
+define('WHATSAPP_BATCH_SIZE', 200);
 define('WHATSAPP_MAX_RETRY', 3);
 define('WHATSAPP_TEMPLATE_ACCOUNT_CREATED', 'memberadded');
 define('WHATSAPP_TEMPLATE_EXPIRY_TODAY', 'expirytoday');
