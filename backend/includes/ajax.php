@@ -69,10 +69,14 @@ if ($tab == 'login') {
 	 $sql= "SELECT * from ".PLANS." WHERE id = '".$id."'";
 	$result = $mysqli->executeQry($sql);
 	$row = $mysqli->fetch_assoc($result);
+	if($row){
 	 extract($row); 
-
 		$response['msg'] = "00";
 		$response['price'] = $price;
+	}else{
+		$response['msg'] = "05";
+		$response['price'] = "";
+	}
 	
 }else if($tab == "get_existing_family_details"){
 

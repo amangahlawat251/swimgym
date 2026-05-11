@@ -764,7 +764,7 @@ function option($name)
         $fromName = $appname;
         $attachmentPath = '';
 		if (method_exists($this, 'sendEmails')) {
-			$this->sendEmails($subject, $body, '', EXCEPTION_EMAIL, APP_FULL_NAME, DEVELOPER_EMAIL, 'Chandan Singh','');
+			$this->sendEmails($subject, $body, '', EXCEPTION_EMAIL, APP_FULL_NAME, DEVELOPER_EMAIL, 'DEVELOPER_NAME','');
 		}
         exit();
     }
